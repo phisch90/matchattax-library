@@ -14,7 +14,8 @@ steht nach dem ersten Deploy im Lauf „Deploy (GitHub Pages)".
   Nummer (drei Ziffern springen von selbst weiter), Name (mit Vorschlägen aus beiden
   Sammlungen), Position, DEF, ATT, Wert — die Zahlen auf einem eigenen Zifferblock.
   Danach gleich die nächste Karte; Saison und Sammlung bleiben stehen. Eine Nummer,
-  die es schon gibt, erhöht mit einem Tipp die Anzahl.
+  die es schon gibt, erhöht mit einem Tipp die Anzahl. Mehrere Fotos auf einmal
+  gewählt werden der Reihe nach abgearbeitet, verkleinert wird im Hintergrund.
 - **Teams**: 11 Karten, ein Torwart, Aufstellung aus einer Liste echter Formationen.
   Auf jeden Platz darf nur die passende Position. Summen für DEF, ATT und Wert;
   optional eine Warnung ab 100.0M Mannschaftswert.
