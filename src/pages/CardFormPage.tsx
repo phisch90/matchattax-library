@@ -6,7 +6,7 @@ import { normalizeSeason, seasonChoices } from "../core/seasons.js";
 import { parseValueTenths, valueInputText } from "../core/value.js";
 import { db, type CardRow, type PhotoRow } from "../db/db.js";
 import { CardRepo, SettingsRepo, hydrateCard, hydrateTeam } from "../db/repo.js";
-import { useAppSettings, useCards, useCollections, useMirror, useObjectUrl, useUniqueIndex } from "../lib/hooks.js";
+import { useAppSettings, useCards, useCollections, useMirror, useObjectUrl } from "../lib/hooks.js";
 import { shrinkPhoto, type ShrunkPhoto } from "../lib/image.js";
 import { goBack } from "../lib/router.js";
 import { HREF } from "../lib/routes.js";
@@ -69,10 +69,6 @@ export function CardFormPage({ id: cardId }: { id: string | null }) {
     [cardId],
   );
   const teamsAll = useLiveQuery(() => db.teams.toArray(), []);
-  const clubs = useUniqueIndex("club");
-  const kinds = useUniqueIndex("kind");
-  const knownSeasons = useUniqueIndex("season");
-  const seasonOptions = useMemo(() => seasonChoices(knownSeasons), [knownSeasons]);
 
   const [draft, setDraft] = useState<CardInput | null>(null);
   const [valueText, setValueText] = useState("");
@@ -99,6 +95,19 @@ export function CardFormPage({ id: cardId }: { id: string | null }) {
   }, [draft, cardId, collectionsState.current, existing]);
 
   const sameCollection = useCards(draft?.collectionId);
+  /*
+    Die Vorschläge (Verein, Kartenart, Saison) kommen aus den Karten, die für den
+    Doppelt-Hinweis ohnehin geladen sind — NICHT über `uniqueKeys()` am Index. Das war
+    der Weg, der auf seinem iPhone „UnknownError: Unable to open cursor" warf: Safari
+    kann diesen Zugriff auf einen Index nicht, Chromium schon. Die Startseite liest
+    anders und lief deshalb.
+  */
+  const clubs = useMemo(() => uniqueValues(sameCollection, (c) => c.club), [sameCollection]);
+  const kinds = useMemo(() => uniqueValues(sameCollection, (c) => c.kind), [sameCollection]);
+  const seasonOptions = useMemo(
+    () => seasonChoices(uniqueValues(sameCollection, (c) => c.season)),
+    [sameCollection],
+  );
   const duplicates = useMemo(
     () => (draft === null ? [] : findDuplicates(sameCollection ?? [], draft, cardId)),
     [sameCollection, draft, cardId],
@@ -516,4 +525,14 @@ function NumField({
       />
     </Field>
   );
+}
+
+/** Die verschiedenen Werte eines Feldes, alphabetisch, Leeres weggelassen. */
+function uniqueValues(rows: readonly CardRow[] | undefined, pick: (row: CardRow) => string): string[] {
+  const set = new Set<string>();
+  for (const row of rows ?? []) {
+    const value = pick(row).trim();
+    if (value !== "") set.add(value);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, "de"));
 }
