@@ -292,9 +292,10 @@ Vier Entscheidungen sind eine Notiz wert:
   eigenen Fehlern (halb verkleinert, Gerät gewechselt) für einen Fall, der ein
   Neu-Auswählen kostet.
 
-Was im Kopf steht: das aktuelle Foto klein, darunter bis zu fünf wartende als Bilder
-und der Rest als Zahl („+7 · 12 Fotos warten"). Ein leerer, pulsierender Kasten ist ein
-Foto, das noch gerechnet wird.
+Was zu sehen ist: das aktuelle Foto und daneben die wartenden als Bilder, der Rest als
+Zahl („+7 · 12 Fotos warten") — die Größen stehen im nächsten Abschnitt, sie sind eine
+Runde später gewachsen. Ein leerer, pulsierender Kasten ist ein Foto, das noch
+gerechnet wird.
 
 ## Zuschneiden auf die Karte — und das Foto groß, weil er davon abliest
 
