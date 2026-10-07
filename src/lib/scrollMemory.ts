@@ -47,22 +47,36 @@ function stopRestore(): void {
 
 if (typeof window !== "undefined") {
   const idx = readIdx();
-  if (idx === undefined) history.replaceState({ idx: 0 }, "");
-  else currentIdx = idx;
+  try {
+    if (idx === undefined) history.replaceState({ idx: 0 }, "");
+    else currentIdx = idx;
+  } catch (error) {
+    console.error(error);
+  }
 
   window.addEventListener("hashchange", (event) => {
-    positions.set(currentIdx, window.scrollY);
-    const to = hashOf(event.newURL);
-    const target = readIdx();
-    if (target === undefined) {
-      // Ein neuer Eintrag: Nummer vergeben, oben anfangen.
-      currentIdx += 1;
-      history.replaceState({ idx: currentIdx }, "");
-      pending = { hash: to, y: 0 };
-    } else {
-      // Zurück oder vor im Verlauf: die gemerkte Höhe dieses Eintrags.
-      currentIdx = target;
-      pending = { hash: to, y: positions.get(target) ?? 0 };
+    /*
+      Alles hier ist Bequemlichkeit. Wirft etwas (ein Browser, der `replaceState` in
+      diesem Moment verweigert), darf das die Navigation nicht aufhalten — die Seite
+      wechselt dann eben ohne gemerkte Höhe.
+    */
+    try {
+      positions.set(currentIdx, window.scrollY);
+      const to = hashOf(event.newURL);
+      const target = readIdx();
+      if (target === undefined) {
+        // Ein neuer Eintrag: Nummer vergeben, oben anfangen.
+        currentIdx += 1;
+        history.replaceState({ idx: currentIdx }, "");
+        pending = { hash: to, y: 0 };
+      } else {
+        // Zurück oder vor im Verlauf: die gemerkte Höhe dieses Eintrags.
+        currentIdx = target;
+        pending = { hash: to, y: positions.get(target) ?? 0 };
+      }
+    } catch (error) {
+      console.error(error);
+      pending = null;
     }
   });
   for (const type of ["wheel", "touchstart", "keydown", "pointerdown"] as const) {
@@ -83,6 +97,15 @@ export function applyPendingScroll(hash: string): void {
   if (pending === null || pending.hash !== hash) return;
   const { y } = pending;
   pending = null;
+  try {
+    restore(y);
+  } catch (error) {
+    // Eine Scroll-Hilfe, die wirft, würde als Fehler im Effekt die ganze App abräumen.
+    console.error(error);
+  }
+}
+
+function restore(y: number): void {
   const token = ++restoreToken;
   const started = performance.now();
   let observer: ResizeObserver | null = null;

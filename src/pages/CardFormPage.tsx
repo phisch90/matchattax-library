@@ -83,7 +83,6 @@ export function CardFormPage({ id: cardId }: { id: string | null }) {
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [triedSave, setTriedSave] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
   const pickRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -223,21 +222,17 @@ export function CardFormPage({ id: cardId }: { id: string | null }) {
             )}
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <input
-              ref={cameraRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => void onPhotoChange(e)}
-            />
+            {/*
+              BEWUSST ohne `capture`: damit öffnet das iPhone die Kamera nicht direkt, sondern
+              fragt „Fotomediathek / Foto aufnehmen". Der direkte Weg zeigte in der
+              installierten Web-App einen schwarzen Sucher ohne Nachfrage — sein erster
+              Befund am echten Gerät. Ein Tipp mehr ist besser als ein schwarzer Bildschirm.
+            */}
             <input ref={pickRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onPhotoChange(e)} />
-            <Btn tone="primary" onClick={() => cameraRef.current?.click()} disabled={photoBusy}>
-              {S.card.photoTake}
+            <Btn tone="primary" onClick={() => pickRef.current?.click()} disabled={photoBusy}>
+              {S.card.photoAdd}
             </Btn>
-            <Btn onClick={() => pickRef.current?.click()} disabled={photoBusy}>
-              {S.card.photoPick}
-            </Btn>
+            <p className="text-xs text-slate-500">{S.card.photoAddHint}</p>
             {previewUrl !== undefined && (
               <Btn tone="ghost" onClick={removePhoto} disabled={photoBusy}>
                 {S.card.photoRemove}

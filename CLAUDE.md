@@ -113,6 +113,30 @@ Strecke, und einer davon nur, weil der Zufall im zweiten Lauf anders fiel als im
   Playwright scrollte für den Klick auf 298, die App merkte sich brav 298 — und die
   Prüfung klagte die App an. Geklickt wird eine Kachel, die schon GANZ im Bild ist.
 
+## Sein erster Befund am echten iPhone: „kommt ein schwarzer Bildschirm"
+
+Wörtlich: „Wenn ich auf Karte hinzufügen klicke, kommt ein schwarzer Bildschirm. Ich
+werde nicht auf die Kamera freizugeben oder so." Safari konnte ich hier nicht
+nachstellen (kein WebKit hinter dem Proxy), also zwei Antworten auf einmal:
+
+- **Kein `capture` am Foto-Feld.** Mit `capture="environment"` öffnet das iPhone die
+  Kamera DIREKT — und in einer installierten Web-App ist das genau der Weg, der seit
+  Jahren immer wieder einen schwarzen Sucher ohne Nachfrage zeigt. Ohne `capture`
+  fragt iOS „Fotomediathek / Foto aufnehmen", und das ist zuverlässig. Deshalb gibt es
+  nur noch EINEN Knopf („Foto aufnehmen oder wählen"); der Hinweis darunter sagt, dass
+  das Gerät fragt. Ein Tipp mehr je Karte ist der Preis — besser als Schwarz.
+- **Ein Auffangrahmen** (`ui/ErrorBoundary.tsx`), zweimal: um jede Seite (die
+  Hauptnavigation bleibt bedienbar, der Schlüssel ist die Adresse) und um die ganze
+  App. Ohne ihn räumt React bei einem Fehler im Aufbau alles ab, und auf einer dunklen
+  App ist das ein schwarzer Bildschirm, den niemand deuten kann. Jetzt steht der
+  Fehlertext da, zum Abfotografieren.
+- **Die Scroll-Hilfe wirft nie.** `history.replaceState` und das Nachsetzen stehen in
+  `try/catch`: ein Fehler in einer Bequemlichkeit, der im Effekt hochkommt, hätte die
+  App genauso abgeräumt.
+
+Was davon seinen Bildschirm schwarz gemacht hat, weiß ich nicht sicher — der nächste
+Befund von ihm kommt mit Fehlertext oder gar nicht mehr.
+
 ## Noch offen
 
 - **Was der Tor-Wert bedeutet.** Er prüft es an seinen Karten; bis dahin ist es ein
