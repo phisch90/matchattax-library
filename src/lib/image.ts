@@ -3,15 +3,20 @@
  * über ein Gigabyte in der Datenbank des Browsers — und jede Sicherung ebenso groß.
  * Deshalb wird beim Aufnehmen verkleinert, nicht erst beim Sichern.
  *
- * Zwei Fassungen je Foto: eine zum Ansehen (längste Kante 1200 px, lesbar bis zum
- * Kleingedruckten) und ein kleines Bild für die Liste, das AN der Karte liegt, damit
- * die Startseite nicht für jede Kachel die Fototabelle fragen muss.
+ * Zwei Fassungen je Foto: eine zum Ansehen (längste Kante 900 px — bei einer Karte
+ * von 63 × 88 mm sind das rund 10 Pixel je Millimeter, das Kleingedruckte bleibt
+ * lesbar) und ein kleines Bild für die Liste, das AN der Karte liegt, damit die
+ * Startseite nicht für jede Kachel die Fototabelle fragen muss.
+ *
+ * Sein Wort nach dem ersten Tag: „Bild gerne kleiner rechnen." Vorher 1200 / 320 px.
+ * Fotos, die schon gespeichert sind, bleiben, wie sie sind — umgerechnet wird nur,
+ * was neu hereinkommt.
  */
 
-export const PHOTO_MAX_PX = 1200;
-export const THUMB_MAX_PX = 320;
-const PHOTO_QUALITY = 0.82;
-const THUMB_QUALITY = 0.75;
+export const PHOTO_MAX_PX = 900;
+export const THUMB_MAX_PX = 240;
+const PHOTO_QUALITY = 0.78;
+const THUMB_QUALITY = 0.72;
 
 export interface ShrunkPhoto {
   full: Blob;

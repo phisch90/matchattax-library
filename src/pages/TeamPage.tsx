@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { FORMATIONS, formationOf, reslot, slotPositions } from "../core/formations.js";
 import type { Position, Team } from "../core/model.js";
-import { BUDGET_TENTHS, clearSlot, placeCard, statForSlot, teamIssues, teamTotals } from "../core/team.js";
+import { BUDGET_TENTHS, clearSlot, fitsSlot, placeCard, statForSlot, teamIssues, teamTotals } from "../core/team.js";
 import { formatValue } from "../core/value.js";
 import { db } from "../db/db.js";
 import { TeamRepo, byId, hydrateTeam } from "../db/repo.js";
@@ -97,17 +97,18 @@ export function TeamPage({ id }: { id: string }) {
       </Box>
 
       <Box>
+        {/* DEF vor ATT — seine Reihenfolge, das ganze Wort als Tooltip. */}
         <dl className="grid grid-cols-4 gap-2 text-center" data-testid="totals">
-          <div>
-            <dt className="text-[10px] uppercase tracking-wider text-slate-500">{S.teams.totals.att}</dt>
-            <dd className="text-xl font-semibold tabular-nums" data-testid="total-att">
-              {totals.att}
-            </dd>
-          </div>
-          <div>
+          <div title={S.card.defLong}>
             <dt className="text-[10px] uppercase tracking-wider text-slate-500">{S.teams.totals.def}</dt>
             <dd className="text-xl font-semibold tabular-nums" data-testid="total-def">
               {totals.def}
+            </dd>
+          </div>
+          <div title={S.card.attLong}>
+            <dt className="text-[10px] uppercase tracking-wider text-slate-500">{S.teams.totals.att}</dt>
+            <dd className="text-xl font-semibold tabular-nums" data-testid="total-att">
+              {totals.att}
             </dd>
           </div>
           <div>
@@ -186,7 +187,7 @@ export function TeamPage({ id }: { id: string }) {
                             {card.name}
                           </span>
                           <span className="text-[10px] tabular-nums text-slate-400">
-                            {line === "mid" ? `${card.att} / ${card.def}` : statForSlot(card, line)}
+                            {line === "mid" ? `${card.def} / ${card.att}` : statForSlot(card, line)}
                           </span>
                         </>
                       )}
@@ -236,6 +237,10 @@ export function TeamPage({ id }: { id: string }) {
         cards={cards ?? []}
         onPick={(cardId) => {
           if (pickSlot === null) return;
+          // Die zweite Hälfte der Sperre: der Auswähler bietet nur Passendes an, und
+          // gesetzt wird trotzdem nur, was passt — sonst hinge die Regel an einer Liste.
+          const card = map.get(cardId);
+          if (card === undefined || !fitsSlot(card, pickPosition)) return;
           update({ slots: placeCard(team.slots, pickSlot, cardId) });
           setPickSlot(null);
         }}

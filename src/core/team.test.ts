@@ -3,6 +3,7 @@ import { cardSchema, type Card, type Position } from "./model.js";
 import {
   BUDGET_TENTHS,
   clearSlot,
+  fitsSlot,
   placeCard,
   sortForSlot,
   statForSlot,
@@ -41,7 +42,7 @@ describe("Teamsummen", () => {
   });
 });
 
-describe("Teamwarnungen — warnen, nie sperren", () => {
+describe("Teamwarnungen — gemeldet wird alles, auch was die Oberfläche nicht mehr zulässt", () => {
   it("ein volles, passendes Team hat keine", () => {
     expect(teamIssues({ formation: "4-4-2", slots: voll, budgetOn: false }, byId)).toEqual([]);
   });
@@ -54,7 +55,7 @@ describe("Teamwarnungen — warnen, nie sperren", () => {
     expect(issues[0]).toEqual({ kind: "leer", count: 2 });
   });
 
-  it("ein Verteidiger im Sturm wird genannt — mit Platz, Soll und Ist", () => {
+  it("ein Verteidiger im Sturm (aus einem alten Team) wird genannt — mit Platz, Soll und Ist", () => {
     const slots = [...voll];
     slots[10] = "d4";
     slots[4] = "a2";
@@ -91,14 +92,23 @@ describe("Teamwarnungen — warnen, nie sperren", () => {
 });
 
 describe("Auswähler-Reihenfolge und Platzieren", () => {
-  it("passende Position zuerst, darin der stärkste Wert für diesen Platz", () => {
+  it("nur die passende Position, darin der stärkste Wert für diesen Platz — keine Umgehung", () => {
     const stark = karte("stark", "att", 99, 10);
     const order = sortForSlot([...alle, stark], "att").map((c) => c.id);
-    expect(order.slice(0, 3)).toEqual(["stark", "a1", "a2"]);
+    expect(order).toEqual(["stark", "a1", "a2"]);
     expect(statForSlot(gk, "gk")).toBe(80);
     expect(statForSlot(mids[0]!, "mid")).toBe(120);
     const hinten = sortForSlot(alle, "def").map((c) => c.id);
-    expect(hinten.slice(0, 4).every((id) => id.startsWith("d"))).toBe(true);
+    expect(hinten).toHaveLength(4);
+    expect(hinten.every((id) => id.startsWith("d"))).toBe(true);
+    expect(sortForSlot(alle, "gk").map((c) => c.id)).toEqual(["gk"]);
+  });
+
+  it("fitsSlot: Mittelfeld nur ins Mittelfeld, Tor nur ins Tor", () => {
+    expect(fitsSlot(mids[0]!, "mid")).toBe(true);
+    expect(fitsSlot(mids[0]!, "att")).toBe(false);
+    expect(fitsSlot(gk, "gk")).toBe(true);
+    expect(fitsSlot(defs[0]!, "gk")).toBe(false);
   });
 
   it("eine Karte, die schon im Team steht, TAUSCHT ihren Platz statt doppelt zu stehen", () => {

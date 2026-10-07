@@ -2,9 +2,12 @@ import { formationOf, slotPositions } from "./formations.js";
 import { TEAM_SIZE, type Card, type Position, type Team } from "./model.js";
 
 /**
- * Die Teamregeln — gerechnet, nie gespeichert. Und WARNEN STATT SPERREN: ein Team
- * mit zehn Karten, einem Verteidiger im Sturm oder 104.5M bleibt ein Team; die App
- * sagt, was daran nicht stimmt, und er entscheidet.
+ * Die Teamregeln — gerechnet, nie gespeichert. WARNEN STATT SPERREN, mit EINER
+ * Ausnahme, die er ausdrücklich bestellt hat: „beim team erstellen darf auf die
+ * position immer nur die passende position. mittelfeld nur ins mittelfeld. keine
+ * umgehung." Das ist `fitsSlot`, und die Oberfläche bietet nichts anderes an. Die
+ * Warnung „falsche Position" bleibt trotzdem — für ein Team von früher und für eine
+ * Karte, deren Position nachträglich geändert wurde.
  */
 
 /** Seine Regel: „Optional Max 100mio Mannschaftswert." In Zehnteln. */
@@ -26,6 +29,11 @@ export type TeamIssue =
   | { kind: "budget"; overTenths: number };
 
 type TeamLike = Pick<Team, "formation" | "slots" | "budgetOn">;
+
+/** Darf diese Karte auf einen Platz dieser Position? Nur mit genau dieser Position — keine Umgehung. */
+export function fitsSlot(card: Pick<Card, "position">, slotPosition: Position): boolean {
+  return card.position === slotPosition;
+}
 
 export function teamCards(team: TeamLike, cardsById: ReadonlyMap<string, Card>): (Card | null)[] {
   return Array.from({ length: TEAM_SIZE }, (_, i) => {
@@ -66,7 +74,7 @@ export function teamIssues(team: TeamLike, cardsById: ReadonlyMap<string, Card>)
     }
     seen.set(id, (seen.get(id) ?? 0) + 1);
     const expected = positions[i]!;
-    if (card.position !== expected) {
+    if (!fitsSlot(card, expected)) {
       issues.push({ kind: "position", slot: i, expected, actual: card.position, cardName: card.name });
     }
   }
@@ -98,27 +106,25 @@ export function statForSlot(card: Card, position: Position): number {
 }
 
 /**
- * Die Reihenfolge im Auswähler: passende Position zuerst, darin die stärkste Karte
- * oben, bei Gleichstand alphabetisch. Die Position ist der ERSTE Schlüssel, weil ein
- * Verteidiger im Sturm eine Warnung wert ist — er soll ihn finden können, aber nicht
- * zuerst.
+ * Die Reihenfolge im Auswähler: NUR die passende Position (alles andere darf dort gar
+ * nicht hin), die stärkste Karte für diesen Platz oben, bei Gleichstand alphabetisch.
  */
 export function sortForSlot<T extends Card>(cards: readonly T[], position: Position): T[] {
-  return [...cards].sort((a, b) => {
-    const pa = a.position === position ? 0 : 1;
-    const pb = b.position === position ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    const sa = statForSlot(a, position);
-    const sb = statForSlot(b, position);
-    if (sa !== sb) return sb - sa;
-    return a.name.localeCompare(b.name, "de");
-  });
+  return cards
+    .filter((c) => fitsSlot(c, position))
+    .sort((a, b) => {
+      const sa = statForSlot(a, position);
+      const sb = statForSlot(b, position);
+      if (sa !== sb) return sb - sa;
+      return a.name.localeCompare(b.name, "de");
+    });
 }
 
 /**
  * Eine Karte auf einen Platz setzen. Steht sie schon auf einem anderen, TAUSCHEN die
  * beiden Plätze — sonst stünde dieselbe Karte zweimal da, und das ist genau eine der
  * Warnungen oben. Was vorher auf dem Zielplatz lag, wandert auf den alten Platz.
+ * Die Position prüft der Aufrufer mit `fitsSlot` — hier gibt es nur Kennungen.
  */
 export function placeCard(
   slots: readonly (string | null)[],

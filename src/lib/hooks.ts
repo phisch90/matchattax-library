@@ -59,6 +59,16 @@ export function useCards(collectionId: string | null | undefined): CardRow[] | u
   return useMemo(() => rows?.map(hydrateCard), [rows]);
 }
 
+/**
+ * ALLE Karten, über beide Sammlungen — für die Namensvorschläge im Assistenten:
+ * derselbe Spieler steckt in seiner Mappe und in der seines Sohnes. `toArray()` ist
+ * einer der Zugriffe, die Safari kann (kein Schlüssel-Cursor am Index).
+ */
+export function useAllCards(): CardRow[] | undefined {
+  const rows = useLiveQuery(() => db.cards.toArray(), []);
+  return useMemo(() => rows?.map(hydrateCard), [rows]);
+}
+
 export function useTeams(collectionId: string | null | undefined): Team[] | undefined {
   const rows = useLiveQuery<Team[] | undefined>(
     () =>

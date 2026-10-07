@@ -1,11 +1,15 @@
 import type { CardRow } from "../db/db.js";
 import { formatValue } from "../core/value.js";
 import { HREF } from "../lib/routes.js";
+import { S } from "../strings.js";
 import { CardThumb } from "./CardThumb.js";
 import { PositionBadge } from "./bits.js";
 
 /** Eine Karte in der Sammlung: Foto im Kartenformat, darunter das, was man beim Suchen braucht. */
 export function CardTile({ card }: { card: CardRow }) {
+  const line = [card.number === "" ? null : `Nr. ${card.number}`, card.season === "" ? null : card.season]
+    .filter((s): s is string => s !== null)
+    .join(" · ");
   return (
     <a
       href={HREF.karte(card.id)}
@@ -23,15 +27,14 @@ export function CardTile({ card }: { card: CardRow }) {
       </div>
       <div className="p-2">
         <div className="truncate text-sm font-medium">{card.name === "" ? "—" : card.name}</div>
-        <div className="truncate text-xs text-slate-400">
-          {[card.club, card.season].filter((s) => s !== "").join(" · ") || " "}
-        </div>
+        <div className="truncate text-xs text-slate-400">{line === "" ? " " : line}</div>
+        {/* DEF vor ATT — seine Reihenfolge; das ganze Wort steht als Tooltip dran. */}
         <div className="mt-1 flex items-center justify-between text-xs tabular-nums text-slate-300">
-          <span>
-            <strong className="text-slate-100">{card.att}</strong> ATT
-          </span>
-          <span>
+          <span title={S.card.defLong}>
             <strong className="text-slate-100">{card.def}</strong> DEF
+          </span>
+          <span title={S.card.attLong}>
+            <strong className="text-slate-100">{card.att}</strong> ATT
           </span>
           <span>{formatValue(card.valueTenths)}</span>
         </div>

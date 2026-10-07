@@ -1,71 +1,53 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type RefObject } from "react";
 import { flushSync } from "react-dom";
-import { findDuplicates } from "../core/collection.js";
+import { findDuplicates, nameSuggestions } from "../core/collection.js";
 import { POSITIONS, type CardInput, type Position } from "../core/model.js";
-import { CURRENT_SEASONS, normalizeSeason, seasonChoices } from "../core/seasons.js";
+import { normalizeSeason, seasonChoices } from "../core/seasons.js";
 import { parseValueTenths } from "../core/value.js";
 import type { CardRow } from "../db/db.js";
 import { CardRepo } from "../db/repo.js";
-import { useCards, useCollections, useObjectUrl } from "../lib/hooks.js";
+import { useAllCards, useCards, useCollections, useObjectUrl } from "../lib/hooks.js";
 import { shrinkPhoto, type ShrunkPhoto } from "../lib/image.js";
 import { navigate } from "../lib/router.js";
 import { HREF } from "../lib/routes.js";
 import { guardWrite } from "../lib/saveError.js";
 import { toast } from "../lib/toast.js";
 import { S } from "../strings.js";
+import { Keypad } from "../ui/Keypad.js";
 import { Btn, Chip, Field, INPUT, POSITION_TONE, Segmented } from "../ui/bits.js";
 
 /**
  * Anlegen als Abfrage WERT FÜR WERT — sein Auftrag nach dem ersten Tag: „kein Geld
  * ausgeben … lieber Wert für Wert abfragen. Mit so wenigen Klicks wie möglich."
  *
- * Fünf Schirme: Foto → Name → Verein → Position → Werte (ATT, DEF, Wert). Was sich
- * von Karte zu Karte selten ändert (Saison, Kartenart, Tor-Wert, Sammlung), bleibt
- * stehen und ist über „ändern" erreichbar. Was sich fast immer ändert (Name,
- * Verein, Position, Werte), wird abgefragt — und zwar so, dass die Tastatur nicht
- * zugeht: Enter auf der Tastatur ist „Weiter", ein Tipp auf einen Vereins-Chip oder
- * eine Position springt von selbst.
+ * Fünf Schirme: Foto → Nummer → Name → Position → Werte (DEF, ATT, Wert). Was sich
+ * von Karte zu Karte selten ändert (Saison, Anzahl, Sammlung), bleibt stehen und ist
+ * über „ändern" erreichbar.
  *
- * `flushSync` beim Schirmwechsel ist kein Zierrat: das nächste Feld muss NOCH IM
- * TIPP fokussiert werden, sonst öffnet iOS die Tastatur nicht. Erst rendern, dann
- * `focus()` — beides in derselben Berührung.
+ * Die Zahlen werden auf einem EIGENEN Zifferblock getippt (`ui/Keypad.tsx`), nicht auf
+ * der Tastatur des Geräts: das Zahlenfeld des iPhones hat keine Weiter-Taste. Die
+ * Nummer springt nach der dritten Ziffer von selbst weiter („soweit ich weiss immer
+ * 3 stellig"), und wenn es die Nummer in der Sammlung schon gibt, steht an dieser
+ * Stelle „Anzahl erhöhen" — ein Tipp statt vier Schirme.
+ *
+ * Nur der Name braucht die Tastatur des Geräts. `flushSync` beim Wechsel dorthin ist
+ * kein Zierrat: das Feld muss NOCH IM TIPP fokussiert werden, sonst öffnet iOS die
+ * Tastatur nicht. Erst rendern, dann `focus()` — beides in derselben Berührung.
  *
  * Die Bearbeitung einer vorhandenen Karte bleibt das volle Formular
  * (`CardFormPage`); hier geht es nur ums Anlegen in Serie.
  */
 
-type Step = "foto" | "name" | "verein" | "position" | "werte";
-const STEPS: readonly Step[] = ["foto", "name", "verein", "position", "werte"];
+type Step = "foto" | "nummer" | "name" | "position" | "werte";
+const STEPS: readonly Step[] = ["foto", "nummer", "name", "position", "werte"];
+
+/** Die drei Zahlen des letzten Schirms, in SEINER Reihenfolge: DEF vor ATT. */
+type ValueKey = "def" | "att" | "wert";
+const VALUE_KEYS: readonly ValueKey[] = ["def", "att", "wert"];
+const NUMBER_DIGITS = 3;
 
 function emptyDraft(collectionId: string, season: string): CardInput {
-  return {
-    collectionId,
-    season,
-    name: "",
-    club: "",
-    position: "mid",
-    att: 0,
-    def: 0,
-    valueTenths: 0,
-    goals: 1,
-    kind: "",
-    qty: 1,
-    note: "",
-  };
-}
-
-/** Die Vereine, zuletzt benutzte zuerst — als Knöpfe, weil ein Päckchen gemischt ist. */
-function recentClubs(rows: readonly CardRow[] | undefined, limit: number): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const row of [...(rows ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
-    const club = row.club.trim();
-    if (club === "" || seen.has(club)) continue;
-    seen.add(club);
-    out.push(club);
-    if (out.length >= limit) break;
-  }
-  return out;
+  return { collectionId, season, number: "", name: "", position: "mid", att: 0, def: 0, valueTenths: 0, qty: 1, note: "" };
 }
 
 function uniqueValues(rows: readonly CardRow[] | undefined, pick: (row: CardRow) => string): string[] {
@@ -82,6 +64,7 @@ export function CardWizardPage() {
   const current = collectionsState.current;
   const [draft, setDraft] = useState<CardInput | null>(null);
   const [step, setStep] = useState<Step>("foto");
+  const [active, setActive] = useState<ValueKey>("def");
   const [pending, setPending] = useState<ShrunkPhoto | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -93,26 +76,25 @@ export function CardWizardPage() {
   const [savedCount, setSavedCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
-  const clubRef = useRef<HTMLInputElement>(null);
-  const attRef = useRef<HTMLInputElement>(null);
-  const defRef = useRef<HTMLInputElement>(null);
-  const wertRef = useRef<HTMLInputElement>(null);
 
   const cards = useCards(draft?.collectionId ?? current?.id);
-  const clubs = useMemo(() => recentClubs(cards, 8), [cards]);
+  const allCards = useAllCards();
   const seasonOptions = useMemo(() => seasonChoices(uniqueValues(cards, (c) => c.season)), [cards]);
   const previewUrl = useObjectUrl(pending?.thumb);
 
-  // Der erste Entwurf: Saison der zuletzt angelegten Karte, sonst die laufende.
+  // Der erste Entwurf: OHNE Saison („Wenn nichts gewählt dann leer lassen").
   useEffect(() => {
-    if (draft !== null || current === null || cards === undefined) return;
-    const last = [...cards].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-    setDraft(emptyDraft(current.id, last?.season ?? CURRENT_SEASONS[0] ?? ""));
-  }, [draft, current, cards]);
+    if (draft !== null || current === null) return;
+    setDraft(emptyDraft(current.id, ""));
+  }, [draft, current]);
 
   const duplicates = useMemo(
     () => (draft === null ? [] : findDuplicates(cards ?? [], draft, null)),
     [cards, draft],
+  );
+  const suggestions = useMemo(
+    () => (draft === null ? [] : nameSuggestions(allCards ?? [], draft.name, 8)),
+    [allCards, draft],
   );
 
   if (draft === null) return <p className="text-sm text-slate-500">{S.common.loading}</p>;
@@ -134,13 +116,22 @@ export function CardWizardPage() {
     setPhotoError(null);
     try {
       setPending(await shrinkPhoto(file));
-      goTo("name", nameRef);
+      goTo("nummer");
     } catch (error) {
       console.error(error);
       setPhotoError(S.card.photoFailed);
     } finally {
       setPhotoBusy(false);
     }
+  };
+
+  /** Eine Ziffer der Nummer — nach der dritten geht es von selbst weiter, außer die Karte ist schon da. */
+  const typeNumberDigit = (digit: string): void => {
+    const next = draft.number + digit;
+    patch({ number: next });
+    if (next.length !== NUMBER_DIGITS || draft.number.length !== NUMBER_DIGITS - 1) return;
+    const already = findDuplicates(cards ?? [], { ...draft, number: next }, null);
+    if (already.length === 0) goTo("name", nameRef);
   };
 
   const nextFromName = (): void => {
@@ -150,17 +141,50 @@ export function CardWizardPage() {
       return;
     }
     setNameMissing(false);
-    goTo("verein", clubRef);
+    goTo("position");
   };
 
-  const pickClub = (club: string): void => {
-    patch({ club });
+  const pickName = (name: string): void => {
+    patch({ name });
+    setNameMissing(false);
     goTo("position");
   };
 
   const pickPosition = (position: Position): void => {
     patch({ position });
-    goTo("werte", attRef);
+    setActive("def");
+    goTo("werte");
+  };
+
+  const typeValueDigit = (digit: string): void => {
+    const d = Number(digit);
+    if (active === "def") patch({ def: Math.min(999, draft.def * 10 + d) });
+    else if (active === "att") patch({ att: Math.min(999, draft.att * 10 + d) });
+    else setValueText((t) => (t.length >= 6 ? t : t + digit));
+  };
+
+  const typeValuePoint = (): void => {
+    if (active !== "wert") return;
+    setValueText((t) => (t.includes(".") || t === "" ? t : `${t}.`));
+  };
+
+  const deleteValue = (): void => {
+    if (active === "def") patch({ def: Math.floor(draft.def / 10) });
+    else if (active === "att") patch({ att: Math.floor(draft.att / 10) });
+    else setValueText((t) => t.slice(0, -1));
+  };
+
+  const valueBad = valueText.trim() !== "" && parseValueTenths(valueText) === null;
+
+  const afterWrite = (collectionId: string, season: string): void => {
+    setSavedCount((n) => n + 1);
+    setDraft(emptyDraft(collectionId, season));
+    setValueText("");
+    setActive("def");
+    setPending(null);
+    setNameMissing(false);
+    setShowKept(false);
+    goTo("foto");
   };
 
   const save = async (): Promise<void> => {
@@ -170,25 +194,20 @@ export function CardWizardPage() {
       goTo("name", nameRef);
       return;
     }
+    if (valueBad) return;
     setSaving(true);
     const input: CardInput = {
       ...draft,
+      number: draft.number.trim(),
       name: draft.name.trim(),
-      club: draft.club.trim(),
-      kind: draft.kind.trim(),
       season: normalizeSeason(draft.season) ?? draft.season.trim(),
+      valueTenths: parseValueTenths(valueText) ?? 0,
     };
     const result = await guardWrite(() => CardRepo.create(input, pending ?? undefined), S.card.writeSubject);
     setSaving(false);
     if (!result.ok) return;
     toast(S.card.saved(input.name), HREF.karte(result.value));
-    setSavedCount((n) => n + 1);
-    setDraft({ ...emptyDraft(input.collectionId, input.season), kind: input.kind, goals: input.goals });
-    setValueText("");
-    setPending(null);
-    setNameMissing(false);
-    setShowKept(false);
-    goTo("foto");
+    afterWrite(input.collectionId, input.season);
   };
 
   const bumpDuplicate = async (): Promise<void> => {
@@ -197,11 +216,13 @@ export function CardWizardPage() {
     const result = await guardWrite(() => CardRepo.bumpQty(dup.id, draft.qty), S.card.writeSubject);
     if (!result.ok) return;
     toast(S.card.duplicateDone(dup.name, result.value), HREF.karte(dup.id));
-    setSavedCount((n) => n + 1);
-    setDraft({ ...emptyDraft(draft.collectionId, draft.season), kind: draft.kind, goals: draft.goals });
-    setValueText("");
-    setPending(null);
-    goTo("foto");
+    afterWrite(draft.collectionId, draft.season);
+  };
+
+  const nextValue = (): void => {
+    if (active === "def") setActive("att");
+    else if (active === "att") setActive("wert");
+    else void save();
   };
 
   const onEnter = (handler: () => void) => (event: KeyboardEvent<HTMLInputElement>): void => {
@@ -214,17 +235,35 @@ export function CardWizardPage() {
   const seasonNorm = normalizeSeason(draft.season);
   const seasonListed = seasonNorm !== null && seasonOptions.includes(seasonNorm);
   const showSeasonInput = seasonCustom || (draft.season !== "" && !seasonListed);
-  const valueBad = valueText.trim() !== "" && parseValueTenths(valueText) === null;
   const collectionName = collectionsState.collections.find((c) => c.id === draft.collectionId)?.name ?? "";
   const keptLine = [
     draft.season === "" ? S.wizard.keptSeasonNone : draft.season,
-    draft.kind === "" ? null : draft.kind,
-    `${S.card.goals} ${draft.goals}`,
     draft.qty > 1 ? `${draft.qty}×` : null,
     collectionsState.collections.length > 1 ? collectionName : null,
   ]
     .filter((s): s is string => s !== null)
     .join(" · ");
+  const dup = duplicates[0];
+
+  const duplicateBox = dup === undefined ? null : (
+    <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 p-2 text-sm text-amber-100" data-testid="duplicate">
+      <p>{S.card.duplicate(dup.name, dup.qty)}</p>
+      <Btn className="mt-2" onClick={() => void bumpDuplicate()}>
+        {S.card.duplicateAction}
+      </Btn>
+    </div>
+  );
+
+  const valueDisplay = (key: ValueKey): string => {
+    if (key === "def") return draft.def === 0 ? "" : String(draft.def);
+    if (key === "att") return draft.att === 0 ? "" : String(draft.att);
+    return valueText;
+  };
+  const VALUE_LABEL: Record<ValueKey, { short: string; long: string }> = {
+    def: { short: S.card.def, long: S.card.defLong },
+    att: { short: S.card.att, long: S.card.attLong },
+    wert: { short: S.card.value, long: S.card.valueHint },
+  };
 
   return (
     <div className="space-y-3" data-testid="wizard" data-step={step}>
@@ -259,9 +298,31 @@ export function CardWizardPage() {
           </Btn>
           <p className="text-center text-xs text-slate-500">{S.card.photoAddHint}</p>
           {photoError !== null && <p className="text-center text-sm text-rose-300">{photoError}</p>}
-          <Btn tone="ghost" className="w-full" onClick={() => goTo("name", nameRef)} disabled={photoBusy}>
+          <Btn tone="ghost" className="w-full" onClick={() => goTo("nummer")} disabled={photoBusy}>
             {S.wizard.photoSkip}
           </Btn>
+        </section>
+      )}
+
+      {step === "nummer" && (
+        <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+          <p className="text-xs font-medium text-slate-400">{S.wizard.numberAsk}</p>
+          <div
+            className="min-h-14 rounded-lg border border-emerald-500 bg-slate-950 px-3 py-2 text-center text-3xl font-semibold tabular-nums tracking-[0.3em]"
+            data-testid="val-nummer"
+            aria-label={S.card.number}
+          >
+            {draft.number === "" ? <span className="text-slate-700">···</span> : draft.number}
+          </div>
+          <p className="text-xs text-slate-500">{S.wizard.numberHint}</p>
+          {duplicateBox}
+          <Keypad onDigit={typeNumberDigit} onDelete={() => patch({ number: draft.number.slice(0, -1) })} decimal={false} />
+          <div className="flex gap-2">
+            <Btn onClick={() => goTo("foto")}>{S.wizard.back}</Btn>
+            <Btn tone="primary" className="flex-1" onClick={() => goTo("name", nameRef)}>
+              {dup !== undefined ? S.wizard.numberAnyway : draft.number === "" ? S.wizard.numberSkip : S.wizard.next}
+            </Btn>
+          </div>
         </section>
       )}
 
@@ -282,56 +343,24 @@ export function CardWizardPage() {
               className={`${INPUT} text-xl`}
             />
           </Field>
-          {duplicates.length > 0 && (
-            <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 p-2 text-sm text-amber-100">
-              <p>{S.card.duplicate(duplicates.length, duplicates[0]!.qty)}</p>
-              <Btn className="mt-2" onClick={() => void bumpDuplicate()}>
-                {S.card.duplicateAction}
-              </Btn>
-            </div>
-          )}
-          <p className="text-xs text-slate-500">{S.wizard.scanHint}</p>
-          <div className="flex gap-2">
-            <Btn onClick={() => goTo("foto")}>{S.wizard.back}</Btn>
-            <Btn tone="primary" className="flex-1" onClick={nextFromName}>
-              {S.wizard.next}
-            </Btn>
-          </div>
-        </section>
-      )}
-
-      {step === "verein" && (
-        <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-          <Field label={S.wizard.clubAsk} htmlFor="karte-club">
-            <input
-              id="karte-club"
-              ref={clubRef}
-              type="text"
-              value={draft.club}
-              onChange={(e) => patch({ club: e.target.value })}
-              onKeyDown={onEnter(() => goTo("position"))}
-              autoComplete="off"
-              autoCapitalize="words"
-              enterKeyHint="next"
-              className={`${INPUT} text-xl`}
-            />
-          </Field>
-          {clubs.length > 0 && (
+          {suggestions.length > 0 && (
             <div>
-              <p className="mb-1 text-xs text-slate-500">{S.wizard.clubRecent}</p>
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label={S.card.club}>
-                {clubs.map((club) => (
-                  <Chip key={club} active={draft.club === club} onClick={() => pickClub(club)}>
-                    {club}
+              <p className="mb-1 text-xs text-slate-500">{S.wizard.nameKnown}</p>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={S.card.name}>
+                {suggestions.map((name) => (
+                  <Chip key={name} active={draft.name === name} onClick={() => pickName(name)}>
+                    {name}
                   </Chip>
                 ))}
               </div>
             </div>
           )}
+          {draft.number === "" && duplicateBox}
+          <p className="text-xs text-slate-500">{S.wizard.scanHint}</p>
           <div className="flex gap-2">
-            <Btn onClick={() => goTo("name", nameRef)}>{S.wizard.back}</Btn>
-            <Btn tone="primary" className="flex-1" onClick={() => goTo("position")}>
-              {draft.club.trim() === "" ? S.wizard.clubSkip : S.wizard.next}
+            <Btn onClick={() => goTo("nummer")}>{S.wizard.back}</Btn>
+            <Btn tone="primary" className="flex-1" onClick={nextFromName}>
+              {S.wizard.next}
             </Btn>
           </div>
         </section>
@@ -353,70 +382,44 @@ export function CardWizardPage() {
               </button>
             ))}
           </div>
-          <Btn onClick={() => goTo("verein", clubRef)}>{S.wizard.back}</Btn>
+          <Btn onClick={() => goTo("name", nameRef)}>{S.wizard.back}</Btn>
         </section>
       )}
 
       {step === "werte" && (
         <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
           <p className="text-xs font-medium text-slate-400">{S.wizard.valuesAsk}</p>
-          <div className="grid grid-cols-3 gap-2">
-            <Field label={S.card.att} htmlFor="karte-att">
-              <input
-                id="karte-att"
-                ref={attRef}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={draft.att === 0 ? "" : draft.att}
-                onChange={(e) => patch({ att: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
-                onKeyDown={onEnter(() => defRef.current?.focus())}
-                enterKeyHint="next"
-                className={`${INPUT} text-center text-2xl font-semibold tabular-nums`}
-              />
-            </Field>
-            <Field label={S.card.def} htmlFor="karte-def">
-              <input
-                id="karte-def"
-                ref={defRef}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={draft.def === 0 ? "" : draft.def}
-                onChange={(e) => patch({ def: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
-                onKeyDown={onEnter(() => wertRef.current?.focus())}
-                enterKeyHint="next"
-                className={`${INPUT} text-center text-2xl font-semibold tabular-nums`}
-              />
-            </Field>
-            <Field label={S.card.value} htmlFor="karte-wert" error={valueBad ? S.card.valueBad : null}>
-              <div className="relative">
-                <input
-                  id="karte-wert"
-                  ref={wertRef}
-                  type="text"
-                  inputMode="decimal"
-                  value={valueText}
-                  onChange={(e) => {
-                    const text = e.target.value;
-                    setValueText(text);
-                    const parsed = parseValueTenths(text);
-                    if (parsed !== null) patch({ valueTenths: parsed });
-                    else if (text.trim() === "") patch({ valueTenths: 0 });
-                  }}
-                  onKeyDown={onEnter(() => void save())}
-                  placeholder="10.0"
-                  enterKeyHint="done"
-                  className={`${INPUT} pr-7 text-center text-2xl font-semibold tabular-nums`}
-                />
-                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-sm text-slate-500">M</span>
-              </div>
-            </Field>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label={S.wizard.valuesGroup}>
+            {VALUE_KEYS.map((key) => {
+              const isActive = active === key;
+              const text = valueDisplay(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setActive(key)}
+                  aria-pressed={isActive}
+                  data-testid={`val-${key}`}
+                  className={`rounded-lg border px-1 py-2 text-center ${
+                    isActive ? "border-emerald-500 bg-slate-950" : "border-slate-700 bg-slate-900"
+                  }`}
+                >
+                  <span className="block text-xs font-medium text-slate-400">{VALUE_LABEL[key].short}</span>
+                  <span className="block min-h-9 text-2xl font-semibold tabular-nums" data-testid={`val-${key}-text`}>
+                    {text === "" ? <span className="text-slate-700">–</span> : text}
+                    {key === "wert" && text !== "" && <span className="text-sm text-slate-500">M</span>}
+                  </span>
+                  <span className="block text-[10px] leading-tight text-slate-500">{VALUE_LABEL[key].long}</span>
+                </button>
+              );
+            })}
           </div>
+          {valueBad && <p className="text-xs text-rose-300">{S.card.valueBad}</p>}
+          <Keypad onDigit={typeValueDigit} onPoint={typeValuePoint} onDelete={deleteValue} decimal={active === "wert"} />
           <div className="flex gap-2">
             <Btn onClick={() => goTo("position")}>{S.wizard.back}</Btn>
-            <Btn tone="primary" className="flex-1" onClick={() => void save()} disabled={saving || photoBusy}>
-              {saving ? S.wizard.saving : S.wizard.saveAndNext}
+            <Btn tone="primary" className="flex-1" onClick={nextValue} disabled={saving || photoBusy}>
+              {saving ? S.wizard.saving : active === "wert" ? S.wizard.saveAndNext : S.wizard.next}
             </Btn>
           </div>
         </section>
@@ -452,6 +455,15 @@ export function CardWizardPage() {
             )}
             <Field label={S.card.season} error={draft.season !== "" && seasonNorm === null ? S.card.seasonFormat : null}>
               <div className="flex flex-wrap gap-1.5" role="group" aria-label={S.card.season}>
+                <Chip
+                  active={draft.season === "" && !showSeasonInput}
+                  onClick={() => {
+                    setSeasonCustom(false);
+                    patch({ season: "" });
+                  }}
+                >
+                  {S.card.seasonNone}
+                </Chip>
                 {seasonOptions.map((s) => (
                   <Chip
                     key={s}
@@ -484,30 +496,6 @@ export function CardWizardPage() {
                 />
               )}
             </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label={S.card.kind} htmlFor="karte-art">
-                <input
-                  id="karte-art"
-                  type="text"
-                  value={draft.kind}
-                  onChange={(e) => patch({ kind: e.target.value })}
-                  placeholder={S.card.kindPlaceholder}
-                  autoComplete="off"
-                  className={INPUT}
-                />
-              </Field>
-              <Field label={S.card.goals} htmlFor="karte-tor" hint={S.card.goalsHint}>
-                <input
-                  id="karte-tor"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={draft.goals === 0 ? "" : draft.goals}
-                  onChange={(e) => patch({ goals: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
-                  className={INPUT}
-                />
-              </Field>
-            </div>
             <Field label={S.card.qty}>
               <div className="flex items-center gap-1">
                 <Btn aria-label="eine weniger" onClick={() => patch({ qty: Math.max(1, draft.qty - 1) })} className="w-11 px-0">

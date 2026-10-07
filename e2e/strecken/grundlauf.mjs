@@ -1,14 +1,17 @@
 /*
-  Grundlauf: Karte per Foto anlegen (Serienmodus), Sammlung filtern, durchschreibend
-  bearbeiten, Zurueck mit gemerkter Scroll-Hoehe, Team in 4-3-3 fuellen, Budget und
-  Positions-Warnungen, Aufstellung wechseln, Karte loeschen (Reihenfolge der Knoepfe),
-  Sicherung speichern und wieder einlesen. Danach kurz in den zwei iPad-Groessen.
+  Grundlauf: Karte per Foto anlegen (Nummer -> Name -> Position -> DEF, ATT, Wert auf
+  dem eigenen Zifferblock), Doppelt-Hinweis ueber die Nummer, Namensvorschlaege,
+  Sammlung filtern, durchschreibend bearbeiten, Zurueck mit gemerkter Scroll-Hoehe,
+  Team in 4-3-3 fuellen (nur passende Position, keine Umgehung), Budget, Aufstellung
+  wechseln, Karte loeschen (Reihenfolge der Knoepfe), Sicherung speichern und wieder
+  einlesen, Fotogroesse. Danach kurz in den zwei iPad-Groessen.
 
   KOPFNOTIZ: keine deutschen Anfuehrungszeichen in dieser Datei. Jede Textpruefung mit /i.
 */
 import { readFileSync } from "node:fs";
 import {
   bild,
+  bildMasse,
   blattText,
   bodyText,
   createReport,
@@ -21,13 +24,28 @@ import {
 const { check, done } = createReport("grundlauf");
 const POS = { gk: 0, def: 1, mid: 2, att: 3 };
 
+/** Auf welchem Schritt der Assistent steht — aus dem DOM, nicht aus dem Text. */
+const schritt = (page) => page.locator('[data-testid="wizard"]').getAttribute("data-step");
+
+/** Ziffern (und den Punkt) auf dem Zifferblock der Seite tippen. WIRFT, wenn keiner da ist. */
+async function tippe(page, text) {
+  const block = page.locator('[role="group"][aria-label="Zifferblock"]');
+  if ((await block.count()) === 0) throw new Error(`kein Zifferblock auf Schritt ${await schritt(page)}`);
+  for (const ch of text) await block.locator(`[data-key="${ch}"]`).click();
+}
+
+/** Der Hauptknopf des aktuellen Schritts (Weiter / Speichern / Ohne … weiter). */
+const hauptknopf = (page) =>
+  page.getByRole("button", { name: /^(Weiter|Ohne Nummer weiter|Trotzdem neu anlegen|Speichern · nächste Karte)$/ });
+
 /**
- * Eine Karte durch den Assistenten tragen: Foto (oder ohne) -> Name -> Verein ->
- * Position -> Werte -> Speichern. Enter auf der Tastatur ist `Weiter`. WIRFT, wenn
- * der Assistent nicht am Foto-Schritt steht — sonst klickt die Strecke ins Leere und
- * klagt danach die App an.
+ * Eine Karte durch den Assistenten tragen: Foto (oder ohne) -> Nummer -> Name ->
+ * Position -> DEF -> ATT -> Wert -> Speichern. Drei Ziffern der Nummer springen von
+ * selbst weiter; weniger (oder keine) brauchen den Knopf. WIRFT, wenn der Assistent
+ * nicht am Foto-Schritt steht — sonst klickt die Strecke ins Leere und klagt danach
+ * die App an.
  */
-async function legeKarte(page, { name, pos, att, def, wert, foto, club }) {
+async function legeKarte(page, { nummer = "", name, pos, def, att, wert, foto }) {
   if (!/#\/karte\/neu/.test(page.url())) throw new Error(`nicht im Assistenten, sondern ${page.url()}`);
   if ((await schritt(page)) !== "foto") throw new Error(`Assistent steht auf ${await schritt(page)}, nicht auf foto`);
   if (foto) {
@@ -36,30 +54,23 @@ async function legeKarte(page, { name, pos, att, def, wert, foto, club }) {
   } else {
     await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
   }
+  if ((await schritt(page)) !== "nummer") throw new Error(`nach dem Foto nicht bei der Nummer, sondern ${await schritt(page)}`);
+  await tippe(page, nummer);
+  if ((await schritt(page)) === "nummer") await hauptknopf(page).click();
+  if ((await schritt(page)) !== "name") throw new Error(`nach der Nummer nicht beim Namen, sondern ${await schritt(page)}`);
   await page.fill("#karte-name", name);
   await page.press("#karte-name", "Enter");
-  if (club !== undefined) {
-    const chip = page.locator('[role="group"][aria-label="Verein"] button').filter({ hasText: club });
-    if ((await chip.count()) > 0) await chip.first().click();
-    else {
-      await page.fill("#karte-club", club);
-      await page.press("#karte-club", "Enter");
-    }
-  } else {
-    await page.press("#karte-club", "Enter");
-  }
+  if ((await schritt(page)) !== "position") throw new Error(`nach dem Namen nicht bei der Position, sondern ${await schritt(page)}`);
   await page.locator('[role="group"][aria-label="Position"] button').nth(POS[pos]).click();
-  await page.fill("#karte-att", String(att));
-  await page.press("#karte-att", "Enter");
-  await page.fill("#karte-def", String(def));
-  await page.press("#karte-def", "Enter");
-  await page.fill("#karte-wert", wert);
-  await page.press("#karte-wert", "Enter");
+  if ((await schritt(page)) !== "werte") throw new Error(`nach der Position nicht bei den Werten, sondern ${await schritt(page)}`);
+  await tippe(page, String(def));
+  await hauptknopf(page).click();
+  await tippe(page, String(att));
+  await hauptknopf(page).click();
+  await tippe(page, wert);
+  await hauptknopf(page).click();
   await page.waitForTimeout(500);
 }
-
-/** Auf welchem Schritt der Assistent steht — aus dem DOM, nicht aus dem Text. */
-const schritt = (page) => page.locator('[data-testid="wizard"]').getAttribute("data-step");
 
 async function kacheln(page) {
   return page.locator('[data-testid="card-grid"] [data-card-id]').count();
@@ -74,10 +85,9 @@ async function oeffneKachel(page, muster) {
 }
 
 /** Einen Platz im Team besetzen: erstes Angebot, das NICHT schon im Team steht. */
-async function besetze(page, slot, { alle = false, suche = "" } = {}) {
+async function besetze(page, slot, { suche = "" } = {}) {
   await page.locator(`[data-slot="${slot}"]`).click();
   await page.locator('[role="dialog"]').first().waitFor({ timeout: 5000 });
-  if (alle) await page.locator('[role="dialog"] button').filter({ hasText: /Alle Positionen/i }).click();
   if (suche !== "") await page.fill('[role="dialog"] input[type=search]', suche);
   await page.waitForTimeout(250);
   const angebote = page.locator('[role="dialog"] [data-testid="picker-list"] button');
@@ -108,67 +118,128 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   await page.waitForTimeout(600);
   check("Assistent fuer neue Karte offen", /#\/karte\/neu/.test(page.url()), page.url());
   check("erster Schritt ist das Foto", (await schritt(page)) === "foto", String(await schritt(page)));
-  check("Saison ist vorbelegt", /\d\d\/\d\d/.test(await lies(page, "kept-line")), await lies(page, "kept-line"));
+  check("Saison ist NICHT vorbelegt: ohne Saison", /ohne Saison/i.test(await lies(page, "kept-line")), await lies(page, "kept-line"));
+  check("Bleibt-Zeile ohne Verein, Tor-Wert und Kartenart", !/Verein|Tor-Wert|Kartenart/i.test(await lies(page, "kept-line")));
+  await bild(page, "iphone-schritt-foto");
 
-  // Saison einmal auf 25/26 stellen — sie bleibt dann fuer alle weiteren Karten stehen
-  await page.getByRole("button", { name: /^ändern$/ }).click();
-  await page.locator('[role="group"][aria-label="Saison"] button').filter({ hasText: /^25\/26$/ }).click();
-  check("Saison steht in der Bleibt-Zeile", /25\/26/.test(await lies(page, "kept-line")), await lies(page, "kept-line"));
-  await page.getByRole("button", { name: /^ändern$/ }).click();
-
-  // Ohne Namen gibt es kein Weiter
+  // Ohne Namen gibt es kein Weiter; die Nummer springt nach drei Ziffern von selbst
   await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
-  check("ohne Foto: beim Namen", (await schritt(page)) === "name");
+  check("ohne Foto: bei der Nummer", (await schritt(page)) === "nummer");
+  check("Nummer-Schritt hat einen Zifferblock ohne Punkt",
+    (await page.locator('[role="group"][aria-label="Zifferblock"] button').count()) === 11 &&
+    (await page.locator('[data-key="."]').count()) === 0);
+  check("ohne Nummer heisst der Knopf so", (await page.getByRole("button", { name: /^Ohne Nummer weiter$/ }).count()) === 1);
+  await tippe(page, "10");
+  check("zwei Ziffern: noch bei der Nummer, Anzeige 10", (await schritt(page)) === "nummer" && /10/.test(await lies(page, "val-nummer")));
+  await bild(page, "iphone-schritt-nummer");
+  await tippe(page, "1");
+  check("dritte Ziffer springt von selbst zum Namen", (await schritt(page)) === "name", String(await schritt(page)));
+  check("Name-Feld hat den Fokus", await page.evaluate(() => document.activeElement?.id === "karte-name"));
   await page.press("#karte-name", "Enter");
   check("ohne Namen: Hinweis statt Weiter", /Ohne Namen geht es nicht/i.test(await bodyText(page)) && (await schritt(page)) === "name");
   await page.getByRole("button", { name: /^Zurück$/ }).click();
+  check("Zurueck fuehrt zur Nummer, sie steht noch da", (await schritt(page)) === "nummer" && /101/.test(await lies(page, "val-nummer")));
+  await page.locator('[data-key="del"]').click();
+  await page.locator('[data-key="del"]').click();
+  await page.locator('[data-key="del"]').click();
+  check("loeschen leert die Nummer", !/\d/.test(await lies(page, "val-nummer")));
+  await page.getByRole("button", { name: /^Zurück$/ }).click();
   check("Zurueck fuehrt zum Foto", (await schritt(page)) === "foto");
 
+  // Die erste Karte mit Foto, Nummer 001, ohne Saison
   const foto = await probeFoto(page);
-  await legeKarte(page, { name: "Torwart Eins", club: "FC Probe", pos: "gk", att: 10, def: 80, wert: "9.5", foto });
+  await legeKarte(page, { nummer: "001", name: "Torwart Eins", pos: "gk", def: 80, att: 10, wert: "9.5", foto });
   check("Bestaetigung nach dem Speichern", /Gespeichert: Torwart Eins/i.test(await bodyText(page)));
   check("danach wieder beim Foto der naechsten Karte", (await schritt(page)) === "foto");
   check("Zaehler: 1 Karte gespeichert", /1 Karte gespeichert/i.test(await bodyText(page)));
   check("Foto der vorigen Karte ist weg", (await page.locator('[data-testid="wizard-thumb"]').count()) === 0);
-  check("Saison bleibt stehen", /25\/26/.test(await lies(page, "kept-line")));
 
-  // Der zuletzt benutzte Verein steht als Knopf, die Position hat kein Weiter ohne Wahl
-  await bild(page, "iphone-schritt-foto");
+  // Saison einmal auf 25/26 stellen — sie bleibt dann fuer alle weiteren Karten stehen
+  await page.getByRole("button", { name: /^ändern$/ }).click();
+  const saisonChips = page.locator('[role="group"][aria-label="Saison"] button');
+  check("Saison-Auswahl beginnt mit keine", /^keine$/i.test(await saisonChips.first().innerText()));
+  await saisonChips.filter({ hasText: /^25\/26$/ }).click();
+  check("Saison steht in der Bleibt-Zeile", /25\/26/.test(await lies(page, "kept-line")), await lies(page, "kept-line"));
+  await page.getByRole("button", { name: /^ändern$/ }).click();
+
+  // Der zweite: Schritt fuer Schritt mit Bildern, DEF vor ATT, Zifferblock
   await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
+  await tippe(page, "045");
+  check("Nummer 045 springt weiter", (await schritt(page)) === "name");
   await page.fill("#karte-name", "Verteidiger Eins");
   await bild(page, "iphone-schritt-name");
   await page.press("#karte-name", "Enter");
-  check("Verein-Schritt", (await schritt(page)) === "verein");
-  await bild(page, "iphone-schritt-verein");
-  const vereinChip = page.locator('[role="group"][aria-label="Verein"] button').filter({ hasText: /^FC Probe$/ });
-  check("zuletzt benutzter Verein steht als Knopf", (await vereinChip.count()) === 1);
-  await vereinChip.click();
-  check("Vereins-Knopf springt zur Position", (await schritt(page)) === "position");
+  check("Position-Schritt", (await schritt(page)) === "position");
   await bild(page, "iphone-schritt-position");
   check("Position: vier Knoepfe, kein Weiter", (await page.locator('[role="group"][aria-label="Position"] button').count()) === 4 && (await page.getByRole("button", { name: /^Weiter$/ }).count()) === 0);
   await page.locator('[role="group"][aria-label="Position"] button').nth(POS.def).click();
   check("Position springt zu den Werten", (await schritt(page)) === "werte");
-  await page.fill("#karte-att", "30");
-  await page.press("#karte-att", "Enter");
-  await page.fill("#karte-def", "70");
-  await page.press("#karte-def", "Enter");
-  await page.fill("#karte-wert", "9,5");
+  const werteFelder = page.locator('[role="group"][aria-label="Werte"] button');
+  const werteTexte = await werteFelder.allInnerTexts();
+  check("Werte in der Reihenfolge DEF, ATT, Wert", werteTexte.length === 3 && /^DEF/i.test(werteTexte[0]) && /^ATT/i.test(werteTexte[1]) && /^Wert/i.test(werteTexte[2]), werteTexte.join(" | "));
+  check("DEF und ATT ausgeschrieben, englisch und deutsch", /Defence · Verteidigung/i.test(werteTexte[0]) && /Attack · Angriff/i.test(werteTexte[1]), werteTexte.join(" | "));
+  check("DEF ist zuerst aktiv", (await werteFelder.nth(0).getAttribute("aria-pressed")) === "true");
+  check("bei DEF kein Punkt auf dem Zifferblock", (await page.locator('[data-key="."]').count()) === 0);
+  await tippe(page, "70");
+  check("DEF 70 steht im Feld", /70/.test(await lies(page, "val-def-text")));
+  await hauptknopf(page).click();
+  check("Weiter macht ATT aktiv", (await werteFelder.nth(1).getAttribute("aria-pressed")) === "true");
+  await tippe(page, "300");
+  await page.locator('[data-key="del"]').click();
+  check("loeschen nimmt die letzte Ziffer: ATT 30", /^30$/.test((await lies(page, "val-att-text")).trim()), await lies(page, "val-att-text"));
+  await hauptknopf(page).click();
+  check("Weiter macht den Wert aktiv, mit Punkt-Taste", (await werteFelder.nth(2).getAttribute("aria-pressed")) === "true" && (await page.locator('[data-key="."]').count()) === 1);
+  await tippe(page, "9.5");
+  check("Wert 9.5 mit M", /9\.5\s*M/.test(await lies(page, "val-wert-text")), await lies(page, "val-wert-text"));
+  check("der Hauptknopf heisst jetzt Speichern", /Speichern/.test(await hauptknopf(page).innerText()));
   await bild(page, "iphone-schritt-werte");
-  await page.press("#karte-wert", "Enter");
+  await hauptknopf(page).click();
   await page.waitForTimeout(500);
-  check("Enter im Wert speichert", /Gespeichert: Verteidiger Eins/i.test(await bodyText(page)) && (await schritt(page)) === "foto");
+  check("Speichern vom Wert aus", /Gespeichert: Verteidiger Eins/i.test(await bodyText(page)) && (await schritt(page)) === "foto");
 
   // Der Rest der Mannschaft: 3 weitere VER, 4 MIT, 3 ANG — alle 9.5M, damit 11 Karten 104.5M ergeben
-  for (const n of ["Zwei", "Drei", "Vier"]) await legeKarte(page, { name: `Verteidiger ${n}`, club: "FC Probe", pos: "def", att: 30, def: 70, wert: "9,5" });
-  for (const n of ["Eins", "Zwei", "Drei", "Vier"]) await legeKarte(page, { name: `Mittelfeld ${n}`, club: "FC Probe", pos: "mid", att: 60, def: 60, wert: "9.5" });
-  for (const n of ["Eins", "Zwei", "Drei"]) await legeKarte(page, { name: `Stuermer ${n}`, club: "FC Probe", pos: "att", att: 85, def: 30, wert: "9.5M" });
+  let nr = 46;
+  for (const n of ["Zwei", "Drei", "Vier"]) await legeKarte(page, { nummer: String(nr++).padStart(3, "0"), name: `Verteidiger ${n}`, pos: "def", def: 70, att: 30, wert: "9.5" });
+  for (const n of ["Eins", "Zwei", "Drei", "Vier"]) await legeKarte(page, { nummer: String(nr++).padStart(3, "0"), name: `Mittelfeld ${n}`, pos: "mid", def: 60, att: 60, wert: "9.5" });
+  for (const n of ["Eins", "Zwei", "Drei"]) await legeKarte(page, { nummer: String(nr++).padStart(3, "0"), name: `Stuermer ${n}`, pos: "att", def: 30, att: 85, wert: "9.5" });
   check("Zaehler zaehlt mit: 12 Karten", /12 Karten gespeichert/i.test(await bodyText(page)));
 
-  // Doppelt-Hinweis: dieselbe Karte noch einmal
+  // Namensvorschlaege: V zeigt die Verteidiger, ein Tipp uebernimmt den Namen
   await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
+  await page.getByRole("button", { name: /^Ohne Nummer weiter$/ }).click();
+  check("ohne Nummer beim Namen", (await schritt(page)) === "name");
+  await page.fill("#karte-name", "V");
+  await page.waitForTimeout(300);
+  const vorschlaege = page.locator('[role="group"][aria-label="Name"] button');
+  // Fuenf, nicht vier: `Mittelfeld Vier` trifft am WORTanfang — genau die Regel (ein Kane findet Harry Kane).
+  check("V: fuenf Vorschlaege — vier Verteidiger und Mittelfeld Vier (Wortanfang)", (await vorschlaege.count()) === 5 && (await vorschlaege.allInnerTexts()).every((t) => /^Verteidiger|Vier$/.test(t)), (await vorschlaege.allInnerTexts()).join(" | "));
+  await page.fill("#karte-name", "eins");
+  await page.waitForTimeout(300);
+  check("eins trifft den Wortanfang: Torwart Eins, Verteidiger Eins, …", (await vorschlaege.count()) === 4, (await vorschlaege.allInnerTexts()).join(" | "));
+  check("kein Doppelt-Hinweis bei einem Teil-Namen", (await page.locator('[data-testid="duplicate"]').count()) === 0);
+  // Der Torwart hat KEINE Saison, der Entwurf steht auf 25/26 — er ist also zu Recht kein Doppel.
   await page.fill("#karte-name", "Torwart Eins");
-  await page.waitForTimeout(400);
-  check("Doppelt-Hinweis erscheint", /schon \(1×\)/i.test(await bodyText(page)));
+  await page.waitForTimeout(300);
+  check("gleicher Name in einer anderen Saison ist kein Doppel", (await page.locator('[data-testid="duplicate"]').count()) === 0);
+  await page.fill("#karte-name", "Verteidiger Eins");
+  await page.waitForTimeout(300);
+  check("ohne Nummer: gleicher Name in derselben Saison ist der Doppelt-Hinweis", (await page.locator('[data-testid="duplicate"]').count()) === 1 && /Schon in dieser Sammlung: Verteidiger Eins \(1×\)/i.test(await lies(page, "duplicate")));
+  await page.fill("#karte-name", "Stu");
+  await page.waitForTimeout(300);
+  await vorschlaege.filter({ hasText: /^Stuermer Zwei$/ }).click();
+  check("Vorschlag antippen: Name steht, Position ist dran", (await schritt(page)) === "position");
+  await page.getByRole("button", { name: /^Zurück$/ }).click();
+  check("der angetippte Name steht im Feld", (await page.inputValue("#karte-name")) === "Stuermer Zwei");
+  await page.getByRole("button", { name: /^Zurück$/ }).click();
+  await page.getByRole("button", { name: /^Zurück$/ }).click();
+  check("zurueck bis zum Foto", (await schritt(page)) === "foto");
+
+  // Doppelt-Hinweis ueber die NUMMER: 045 ist Verteidiger Eins (Saison 25/26, wie der Entwurf)
+  await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
+  await tippe(page, "045");
+  check("gleiche Nummer: bleibt bei der Nummer, Hinweis mit Namen", (await schritt(page)) === "nummer" && (await page.locator('[data-testid="duplicate"]').count()) === 1 && /Verteidiger Eins \(1×\)/i.test(await lies(page, "duplicate")));
+  check("der Knopf heisst Trotzdem neu anlegen", (await page.getByRole("button", { name: /^Trotzdem neu anlegen$/ }).count()) === 1);
+  await bild(page, "iphone-doppelt");
   await page.getByRole("button", { name: /Anzahl erh/i }).click();
   await page.waitForTimeout(500);
   check("Anzahl erhoeht statt neu angelegt", /jetzt 2×/i.test(await bodyText(page)) && (await schritt(page)) === "foto");
@@ -181,19 +252,28 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   const summe = await lies(page, "summary");
   check("Summenzeile: 12 Karten, 13 Stueck", /12 Karten · 13 Stück/i.test(summe), summe);
   check("Summenzeile je Position", /1 TOR · 4 VER · 4 MIT · 3 ANG/i.test(summe), summe);
-  check("Mehrfach-Marke x2 an der Kachel", (await page.locator('[data-card-id]').filter({ hasText: /×2/ }).count()) === 1);
-  check("Kachel mit Foto zeigt ein Bild", (await page.locator('[data-card-id]').filter({ hasText: /Torwart Eins/ }).locator("img").count()) === 1);
-  check("Werte stehen auf der Kachel", /85 ATT/i.test(await page.locator('[data-card-id]').filter({ hasText: /Stuermer Eins/ }).innerText()));
+  check("Mehrfach-Marke x2 an der Kachel von Verteidiger Eins", (await page.locator('[data-card-id]').filter({ hasText: /×2/ }).count()) === 1 && /Verteidiger Eins/.test(await page.locator('[data-card-id]').filter({ hasText: /×2/ }).innerText()));
+  const torwartKachel = page.locator('[data-card-id]').filter({ hasText: /Torwart Eins/ });
+  check("Kachel mit Foto zeigt ein Bild", (await torwartKachel.locator("img").count()) === 1);
+  check("Kachel ohne Saison nennt keine, aber die Nummer", /Nr\. 001/.test(await torwartKachel.innerText()) && !/\d\d\/\d\d/.test(await torwartKachel.innerText()), await torwartKachel.innerText());
+  const stuermerKachel = page.locator('[data-card-id]').filter({ hasText: /Stuermer Eins/ });
+  check("Kachel: DEF vor ATT, Nummer und Saison", /30 DEF[\s\S]*85 ATT/i.test(await stuermerKachel.innerText()) && /25\/26/.test(await stuermerKachel.innerText()), await stuermerKachel.innerText());
+  check("nur eine Saison: kein Saison-Filter", (await page.locator('[role="group"][aria-label="Saison"]').count()) === 0);
   check("kein seitlicher Ueberlauf (Sammlung)", (await ueberlauf(page)) <= 1);
 
   await page.fill('input[type=search]', "torwart");
   await page.waitForTimeout(300);
   check("Suche findet den Torwart", (await kacheln(page)) === 1);
+  await page.fill('input[type=search]', "047");
+  await page.waitForTimeout(300);
+  check("Suche findet die Nummer", (await kacheln(page)) === 1 && /Verteidiger Drei/.test(await page.locator('[data-card-id]').first().innerText()));
   await page.fill('input[type=search]', "");
   await page.locator('[role="group"][aria-label="Position"] button').filter({ hasText: /^VER$/ }).click();
   await page.waitForTimeout(300);
   check("Positions-Filter VER: 4 Kacheln", (await kacheln(page)) === 4);
   await page.locator('[role="group"][aria-label="Position"] button').filter({ hasText: /^Alle$/ }).click();
+  const sortierung = await page.locator("select option").allInnerTexts();
+  check("Sortierung bietet DEF vor ATT", sortierung.indexOf("DEF") < sortierung.indexOf("ATT"), sortierung.join(" | "));
   await page.selectOption("select", "att");
   await page.waitForTimeout(300);
   check("Sortierung ATT: Stuermer zuerst", /Stuermer/i.test(await page.locator('[data-card-id]').first().innerText()));
@@ -202,8 +282,16 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
 
   // ---- Bearbeiten schreibt durch
   await oeffneKachel(page, /Mittelfeld Eins/);
-  check("Bearbeiten: Titel Karte, Knopf Fertig", /Fertig/.test(await page.locator("h1 ~ button, button").filter({ hasText: /^Fertig$/ }).innerText()));
-  check("Bearbeiten: keine Speichern-Leiste", (await page.getByRole("button", { name: /^Speichern/ }).count()) === 0);
+  check("Bearbeiten: Knopf Fertig", (await page.getByRole("button", { name: /^Fertig$/ }).count()) === 1);
+  check("Bearbeiten: keine Speichern-Leiste, kein Serienmodus", (await page.getByRole("button", { name: /^Speichern/ }).count()) === 0 && !/nächste Karte/i.test(await bodyText(page)));
+  const formular = await bodyText(page);
+  check("Formular ohne Verein, Tor-Wert, Kartenart", !/Verein|Tor-Wert|Kartenart/i.test(formular));
+  check("Formular mit Nummer", (await page.locator("#karte-nummer").count()) === 1 && (await page.inputValue("#karte-nummer")) === "049");
+  const defBox = await page.locator("#karte-def").boundingBox();
+  const attBox = await page.locator("#karte-att").boundingBox();
+  check("Formular: DEF links von ATT", defBox !== null && attBox !== null && defBox.x < attBox.x);
+  check("Formular: DEF und ATT ausgeschrieben", /Defence · Verteidigung/i.test(formular) && /Attack · Angriff/i.test(formular));
+  await bild(page, "iphone-formular");
   await page.fill("#karte-att", "61");
   await page.waitForTimeout(500);
   await page.getByRole("button", { name: /^Fertig$/ }).click();
@@ -249,6 +337,8 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   check("Team-Seite offen", /#\/teams\/[0-9a-f-]{8,}/i.test(page.url()), page.url());
   check("Name: Team 1", (await page.inputValue('input[aria-label="Name des Teams"]')) === "Team 1");
   check("kein seitlicher Ueberlauf (Team)", (await ueberlauf(page)) <= 1);
+  const summen = await page.locator('[data-testid="totals"] dt').allInnerTexts();
+  check("Summen: DEF vor ATT", /DEF/i.test(summen[0]) && /ATT/i.test(summen[1]), summen.join(" | "));
   await page.locator('[role="group"][aria-label="Aufstellung"] button').filter({ hasText: /^4-3-3$/ }).click();
   await page.waitForTimeout(400);
   const zaehle = (line) => page.locator(`[data-line="${line}"] [data-slot]`).count();
@@ -257,17 +347,39 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   check("elf leere Plaetze gemeldet", /11 Plätze sind noch frei/i.test(await bodyText(page)));
   check("keine Aufstellung 0-0-10 waehlbar", (await page.locator('[role="group"][aria-label="Aufstellung"] button').filter({ hasText: /0-0-10|^0-/ }).count()) === 0);
 
+  // Der Auswaehler kennt NUR die passende Position — keine Umgehung
   await page.locator('[data-slot="0"]').click();
   await page.locator('[role="dialog"]').first().waitFor({ timeout: 5000 });
   check("Auswaehler fuer das Tor zeigt nur Torwarte", (await page.locator('[role="dialog"] [data-testid="picker-list"] button').count()) === 1);
   check("Auswaehler-Titel nennt den Platz", /Torwart w[aä]hlen/i.test(await blattText(page)));
+  check("kein Schalter Alle Positionen", (await page.locator('[role="dialog"] button').filter({ hasText: /Alle Positionen/i }).count()) === 0);
+  check("die Regel steht im Blatt", /Nur Torwarte/i.test(await lies(page, "picker-rule")));
   await page.locator('[role="dialog"] [data-testid="picker-list"] button').first().click();
   await page.waitForTimeout(400);
+  await page.locator('[data-slot="10"]').click();
+  await page.locator('[role="dialog"]').first().waitFor({ timeout: 5000 });
+  check("Sturm-Platz: genau die drei Stuermer", (await page.locator('[role="dialog"] [data-testid="picker-list"] button').count()) === 3);
+  check("die Regel nennt die Position", /Nur Angriff/i.test(await lies(page, "picker-rule")));
+  await page.fill('[role="dialog"] input[type=search]', "Verteidiger");
+  await page.waitForTimeout(250);
+  check("ein Verteidiger ist im Sturm nicht zu finden — mit Grund", (await page.locator('[role="dialog"] [data-testid="picker-list"] button').count()) === 0 && /Keine Karte mit Position Angriff/i.test(await blattText(page)));
+  await page.fill('[role="dialog"] input[type=search]', "054");
+  await page.waitForTimeout(250);
+  check("Suche im Auswaehler findet die Nummer", (await page.locator('[role="dialog"] [data-testid="picker-list"] button').count()) === 1 && /Stuermer Zwei/.test(await blattText(page)));
+  await bild(page, "iphone-auswaehler");
+  await page.locator('[role="dialog"] button[aria-label="Schließen"]').click();
+  await page.waitForTimeout(300);
+  // Der naechste Platz darf die Suche von eben NICHT mehr tragen (sie hing einmal still im Feld).
+  await page.locator('[data-slot="1"]').click();
+  await page.locator('[role="dialog"]').first().waitFor({ timeout: 5000 });
+  check("Suche ist beim naechsten Platz leer", (await page.inputValue('[role="dialog"] input[type=search]')) === "" && (await page.locator('[role="dialog"] [data-testid="picker-list"] button').count()) === 4);
+  await page.locator('[role="dialog"] button[aria-label="Schließen"]').click();
+  await page.waitForTimeout(300);
   for (let slot = 1; slot <= 10; slot++) await besetze(page, slot);
 
   check("11 von 11 Plaetzen", /11 \/ 11/.test(await lies(page, "total-slots")), await lies(page, "total-slots"));
-  check("ATT gesamt 566", (await lies(page, "total-att")) === "566", await lies(page, "total-att"));
   check("DEF gesamt 630", (await lies(page, "total-def")) === "630", await lies(page, "total-def"));
+  check("ATT gesamt 566", (await lies(page, "total-att")) === "566", await lies(page, "total-att"));
   check("Wert 104.5M", /104\.5M/.test(await lies(page, "total-value")), await lies(page, "total-value"));
   check("alles passt (keine Hinweise)", (await page.locator('[data-testid="issues-ok"]').count()) === 1);
   await bild(page, "iphone-team");
@@ -282,20 +394,14 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   await page.waitForTimeout(400);
   check("Budget aus: Warnung weg", (await page.locator('[data-testid="issues-ok"]').count()) === 1);
 
-  // Falsche Position: Verteidiger in den Sturm -> Tausch, zwei Hinweise
-  await besetze(page, 10, { alle: true, suche: "Verteidiger" });
-  const hinweise = page.locator('[data-testid="issues"] li');
-  check("Verteidiger im Sturm: zwei Positions-Hinweise (Tausch)", (await hinweise.count()) === 2, String(await hinweise.count()));
-  check("Hinweis nennt Soll und Ist", /ist Verteidigung, hier gehört Angriff hin/i.test(await bodyText(page)));
-  check("Platz mit falscher Position ist markiert", /border-rose-500/.test(await page.locator('[data-slot="10"]').getAttribute("class")));
-  check("weiter 11 / 11 — gewarnt, nicht gesperrt", /11 \/ 11/.test(await lies(page, "total-slots")));
-  await besetze(page, 10, { alle: true, suche: "Stuermer Zwei" });
-  check("Rueckgetauscht: alles passt", (await page.locator('[data-testid="issues-ok"]').count()) === 1);
+  // Tausch innerhalb der Position: Stuermer Drei auf Platz 10 holt den von dort nach vorn
+  await besetze(page, 10, { suche: "Stuermer Drei" });
+  check("Tausch innerhalb der Position: weiter alles passt, 11 / 11", (await page.locator('[data-testid="issues-ok"]').count()) === 1 && /11 \/ 11/.test(await lies(page, "total-slots")));
 
   // Aufstellung wechseln: 4-3-3 -> 4-4-2, ein Stuermer passt nicht mehr
   await page.locator('[role="group"][aria-label="Aufstellung"] button').filter({ hasText: /^4-4-2$/ }).click();
   await page.waitForTimeout(400);
-  check("Wechsel nennt die rausgefallene Karte", /Stuermer Zwei nicht mehr hinein/i.test(await bodyText(page)));
+  check("Wechsel nennt die rausgefallene Karte", /Stuermer \w+ nicht mehr hinein/i.test(await bodyText(page)));
   check("10 von 11 nach dem Wechsel", /10 \/ 11/.test(await lies(page, "total-slots")), await lies(page, "total-slots"));
   check("ein Platz frei gemeldet", /1 Platz ist noch frei/i.test(await bodyText(page)));
   await page.locator('[role="group"][aria-label="Aufstellung"] button').filter({ hasText: /^4-3-3$/ }).click();
@@ -305,7 +411,7 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
 
   await gehe(page, /Teams/);
   const eintrag = page.locator("a").filter({ hasText: /Team 1/ });
-  check("Teamliste zeigt Aufstellung und Summen", /4-3-3/.test(await eintrag.innerText()) && /566/.test(await eintrag.innerText()));
+  check("Teamliste zeigt Aufstellung und Summen, DEF vor ATT", /4-3-3/.test(await eintrag.innerText()) && /630 DEF[\s\S]*566 ATT/.test(await eintrag.innerText()), await eintrag.innerText());
 
   // ---- Karte loeschen, die im Team steht
   await gehe(page, /Sammlung/);
@@ -333,8 +439,16 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   const pfad = await download.path();
   const sicherung = JSON.parse(readFileSync(pfad, "utf8"));
   check("Sicherung: 11 Karten, 2 Sammlungen, 1 Team", sicherung.cards.length === 11 && sicherung.collections.length === 2 && sicherung.teams.length === 1);
-  check("Sicherung traegt das Foto als Daten", sicherung.cards.some((c) => typeof c.photo === "string" && c.photo.startsWith("data:image/jpeg")));
+  const mitFoto = sicherung.cards.find((c) => typeof c.photo === "string");
+  check("Sicherung traegt das Foto als Daten", mitFoto !== undefined && mitFoto.photo.startsWith("data:image/jpeg"));
+  check("Sicherung traegt die Nummer", sicherung.cards.every((c) => typeof c.number === "string") && mitFoto.number === "001");
   check("Sicherung traegt die Aufstellung", sicherung.teams[0].formation === "4-3-3" && sicherung.teams[0].slots.length === 11);
+  // Fotogroesse: die Probe ist 1260 x 1760, gespeichert wird hoechstens 900 px
+  const fotoMasse = await bildMasse(page, mitFoto.photo);
+  check("Foto ist auf 900 px verkleinert", Math.max(...fotoMasse) === 900 && Math.min(...fotoMasse) > 0, fotoMasse.join("x"));
+  const kleinMasse = typeof mitFoto.thumb === "string" ? await bildMasse(page, mitFoto.thumb) : [0, 0];
+  check("kleines Bild hoechstens 240 px", Math.max(...kleinMasse) === 240, kleinMasse.join("x"));
+  check("Foto bleibt unter 150 KB", mitFoto.photo.length * 0.75 < 150_000, `${Math.round((mitFoto.photo.length * 0.75) / 1024)} KB`);
   await page.waitForTimeout(400);
   check("Zeitpunkt der Sicherung steht da", /Zuletzt gesichert:/i.test(await lies(page, "last-export")));
   check("Dateiname mit Datum", /^kartenmappe-sicherung-\d{4}-\d{2}-\d{2}\.json$/.test(download.suggestedFilename()), download.suggestedFilename());
@@ -364,11 +478,20 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   check("fremde Datei wird abgelehnt", /keine Sicherung dieser App/i.test(await bodyText(page)));
   check("Versionsmarke steht in den Einstellungen", /Stand der App/i.test(await bodyText(page)) && (await lies(page, "version-running")).length > 3);
 
-  // ---- Sammlung wechseln: der Sohn hat eigene Karten
+  // ---- Sammlung wechseln: der Sohn hat eigene Karten, aber dieselben Namen als Vorschlag
   await gehe(page, /Sammlung/);
   await page.locator('[role="group"][aria-label*="Sammlung"] button').filter({ hasText: /Sohn/ }).click();
   await page.waitForTimeout(500);
   check("Sammlung des Sohnes ist leer", /Noch keine Karten/i.test(await bodyText(page)));
+  await page.locator("a").filter({ hasText: /\+ Karte/ }).click();
+  await page.waitForTimeout(600);
+  await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
+  await tippe(page, "001");
+  check("Sohn: Nummer 001 ist hier KEIN Doppel — andere Sammlung", (await schritt(page)) === "name");
+  await page.fill("#karte-name", "Tor");
+  await page.waitForTimeout(300);
+  check("Sohn: Namen aus der anderen Sammlung werden vorgeschlagen", (await page.locator('[role="group"][aria-label="Name"] button').filter({ hasText: /^Torwart Eins$/ }).count()) === 1);
+  await gehe(page, /Sammlung/);
   await page.locator('[role="group"][aria-label*="Sammlung"] button').filter({ hasText: /Philipp/ }).click();
   await page.waitForTimeout(500);
   check("zurueck bei Philipp: 11 Kacheln", (await kacheln(page)) === 11);
@@ -385,7 +508,11 @@ for (const [name, w, h] of [["ipad-quer", 1180, 820], ["ipad-hoch", 820, 1180]])
   check(`${name}: kein Ueberlauf (Start)`, (await ueberlauf(page)) <= 1);
   await page.locator("a").filter({ hasText: /\+ Karte/ }).click();
   await page.waitForTimeout(500);
-  for (const n of ["A", "B", "C", "D"]) await legeKarte(page, { name: `Spieler ${n}`, pos: "mid", att: 50, def: 50, wert: "5" });
+  let nr = 200;
+  for (const n of ["A", "B", "C", "D"]) await legeKarte(page, { nummer: String(nr++), name: `Spieler ${n}`, pos: "mid", def: 50, att: 50, wert: "5" });
+  check(`${name}: vier Karten gespeichert`, /4 Karten gespeichert/i.test(await bodyText(page)));
+  check(`${name}: kein Ueberlauf (Assistent)`, (await ueberlauf(page)) <= 1);
+  await bild(page, `${name}-assistent`);
   await gehe(page, /Sammlung/);
   const ys = [];
   for (let i = 0; i < 3; i++) ys.push((await page.locator('[data-card-id]').nth(i).boundingBox()).y);
@@ -401,4 +528,4 @@ for (const [name, w, h] of [["ipad-quer", 1180, 820], ["ipad-hoch", 820, 1180]])
   await ctx.close();
 }
 
-done(100);
+done(120);

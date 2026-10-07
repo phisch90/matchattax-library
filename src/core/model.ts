@@ -34,10 +34,19 @@ export type Collection = z.infer<typeof collectionSchema>;
 export const cardSchema = z.object({
   id: z.string().min(1),
   collectionId: z.string().min(1),
-  /** „25/26" — frei, aber `seasons.ts` bringt es in diese Form, wenn es geht. */
+  /**
+   * „25/26" — frei, aber `seasons.ts` bringt es in diese Form, wenn es geht. Leer ist
+   * der Normalfall: „Saison optional. Wenn nichts gewählt dann leer lassen."
+   */
   season: z.string().default(""),
+  /**
+   * Die Kartennummer, wie sie auf der Karte steht — „soweit ich weiss immer 3 stellig".
+   * Als TEXT, nicht als Zahl: eine führende Null oder ein Buchstabe (Sonderkarten)
+   * ginge sonst verloren, und gerechnet wird mit ihr nie. Sie ist die Kennung für den
+   * Doppelt-Hinweis.
+   */
+  number: z.string().default(""),
   name: z.string().default(""),
-  club: z.string().default(""),
   position: z.enum(POSITIONS).default("mid").catch("mid"),
   att: int(0),
   def: int(0),
@@ -46,10 +55,6 @@ export const cardSchema = z.object({
    * ohne Fließkomma-Rest zusammenzählen (`value.ts` rechnet hin und zurück).
    */
   valueTenths: int(0),
-  /** Der kleine Tor-Wert auf der Karte. Fast immer 1, bei einer hat er eine 2 gesehen. */
-  goals: int(1),
-  /** Kartenart: Basis, Limited Edition, … — frei, weil die Namen je Saison wechseln. */
-  kind: z.string().default(""),
   /** Wie oft er diese Karte in dieser Sammlung hat. */
   qty: int(1),
   note: z.string().default(""),
@@ -57,6 +62,16 @@ export const cardSchema = z.object({
   hasPhoto: z.boolean().default(false).catch(false),
   createdAt: z.string().default(""),
   updatedAt: z.string().default(""),
+  /*
+    Drei Felder OHNE Oberfläche: Verein, Tor-Wert und Kartenart hat er gestrichen
+    („egal, kann raus"). Sie bleiben hier als `optional`, damit eine Zeile von gestern
+    ihren getippten Wert behält — ein gespeicherter Wert wird nicht still gelöscht.
+    Ohne `.default()`, damit kein Entwurf und kein Test sie mitschreiben muss. Nichts
+    liest sie; wer sie ganz entfernen will, braucht sein Wort, sonst nichts.
+  */
+  club: z.string().optional().catch(undefined),
+  goals: z.number().int().optional().catch(undefined),
+  kind: z.string().optional().catch(undefined),
 });
 export type Card = z.infer<typeof cardSchema>;
 
@@ -88,14 +103,16 @@ export const teamSchema = z.object({
 });
 export type Team = z.infer<typeof teamSchema>;
 
-/** Geräte-Einstellungen: was die App ZEIGT, nicht was er besitzt. */
+/**
+ * Geräte-Einstellungen: was die App ZEIGT, nicht was er besitzt. (`serialMode` stand
+ * hier einmal — der Assistent legt immer in Serie an, also las den Schalter niemand
+ * mehr; ein Schalter, der nichts tut, ist weg.)
+ */
 export const appSettingsSchema = z.object({
   /** Welche Sammlung gerade offen ist. */
   currentCollectionId: z.string().default(""),
   /** Wann zuletzt gesichert wurde (ISO, "" = nie). */
   lastExportAt: z.string().default(""),
-  /** Nach dem Speichern gleich die nächste Karte? Sein Normalfall: Stapel abarbeiten. */
-  serialMode: z.boolean().default(true).catch(true),
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const DEFAULT_APP_SETTINGS: AppSettings = appSettingsSchema.parse({});

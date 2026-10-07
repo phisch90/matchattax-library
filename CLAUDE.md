@@ -19,17 +19,24 @@ Einstellungen sagt, was das Gerät hat).
   „Sohn", umbenennbar in den Einstellungen. Eine Karte gehört GENAU EINER Sammlung
   (sie ist ein physisches Stück); gleiche Karten innerhalb einer Sammlung zählt die
   Anzahl. Umziehen in die andere Sammlung geht im Formular.
-- **Die Werte auf der Karte**, in seinen Worten: DEF · ATT · „XX.XM (bsp 10.0M)
-  Kartenwert in game" · „Tor wert (bei fast allen 1, einer hat 2)" · Position
-  (Angriff, Mittelfeld, Verteidigung, Tor). Genau das sind die Felder. Der Tor-Wert
-  ist ein Zahlenfeld mit Standard 1 — was er bedeutet, prüft er noch selbst.
+- **Die Werte auf der Karte**, nach dem zweiten Tag: **Nummer** („soweit ich weiss
+  immer 3 stellig") · DEF · ATT · „XX.XM (bsp 10.0M) Kartenwert in game" · Position
+  (Angriff, Mittelfeld, Verteidigung, Tor). **Gestrichen, alle drei mit „egal, kann
+  raus": Verein, Tor-Wert, Version/Edition** („da kann man nirgendwo sehen welche
+  karte und version das überhaupt ist"). Die drei Felder liegen als `optional` ohne
+  Oberfläche im Schema, damit eine Zeile vom ersten Tag ihren Wert behält. DEF steht
+  VOR ATT, überall, und beide tragen das ganze Wort: „Defence · Verteidigung",
+  „Attack · Angriff" — „für den Lerneffekt".
 - **Teambau:** „11 Karten. Ein Torwart. Auswahl einer realistischen Formation. Also
   kein (1-)0-0-10 sondern (1-)4-3-3 oder so. Immer ein Torwart. Optional Max 100mio
   Mannschaftswert." Gebaut als Liste von sieben Aufstellungen (`core/formations.ts`),
   der Torwart ist nicht wählbar und immer Platz 0, das Budget ein Schalter je Team
   (Standard AUS), alles als Warnung.
-- **Saisons: alle, aktuell 25/26 und 26/27.** Die zwei stehen immer zur Wahl
-  (`CURRENT_SEASONS`), ältere kommen dazu, sobald eine Karte sie trägt.
+- **Saisons: alle, aktuell 25/26 und 26/27 — aber optional.** „Wenn nichts gewählt
+  dann leer lassen. Ist auch nie relevant." Der Entwurf beginnt OHNE Saison; wer eine
+  wählt, behält sie für die Serie. Die zwei aktuellen stehen immer zur Wahl
+  (`CURRENT_SEASONS`), ältere kommen dazu, sobald eine Karte sie trägt. Der
+  Saison-Filter auf der Startseite erscheint erst, wenn es mehr als eine gibt.
 
 ## Wie die App gedacht ist
 
@@ -41,21 +48,32 @@ Einstellungen sagt, was das Gerät hat).
 - **Es scrollt das FENSTER**, nicht ein Kasten. Damit funktioniert die gemerkte
   Scroll-Höhe über `window.scrollY` (`lib/scrollMemory.ts`); gemerkt wird VOR dem
   Rendern der neuen Seite, weil der Browser `scrollY` sonst schon abgeklemmt hat.
-- **Fotos werden beim Aufnehmen verkleinert** (1200 px fürs Ansehen, 320 px für die
-  Liste), nicht erst beim Sichern. Das kleine Bild liegt AN der Kartenzeile, das große
-  in einer eigenen Tabelle — die Liste lädt so keine Megabytes.
+- **Fotos werden beim Aufnehmen verkleinert** (900 px fürs Ansehen, 240 px für die
+  Liste — „Bild gerne kleiner rechnen", vorher 1200 / 320), nicht erst beim Sichern.
+  Das kleine Bild liegt AN der Kartenzeile, das große in einer eigenen Tabelle — die
+  Liste lädt so keine Megabytes. Schon gespeicherte Fotos bleiben, wie sie sind.
 - **Der Kartenwert liegt in ZEHNTELN** (10.0M → 100), damit elf Werte ohne
   Fließkommarest summieren. Angezeigt wie auf der Karte: Punkt und M. Getippt werden
   darf Komma oder Punkt.
-- **Zwei Betriebsarten im einen Formular:** NEU ist ein Entwurf bis „Speichern" (dann
-  im Serienmodus gleich die nächste Karte: Saison, Verein, Kartenart, Sammlung bleiben
-  stehen). BEARBEITEN schreibt jede Änderung sofort durch; „Fertig" geht nur zurück.
+- **Anlegen und Bearbeiten sind zwei Seiten.** Angelegt wird Wert für Wert im
+  Assistenten (`pages/CardWizardPage.tsx`, immer in Serie); das Formular
+  (`pages/CardFormPage.tsx`) ist nur zum BEARBEITEN und schreibt jede Änderung sofort
+  durch; „Fertig" geht nur zurück. Der alte Anlege-Zweig des Formulars (Entwurf,
+  Serienmodus-Schalter, Speichern-Leiste) ist weg, `serialMode` aus den Einstellungen
+  mit — ein Schalter, den niemand las.
 - **Name und Position sind Pflicht** beim Anlegen — alles andere darf leer sein.
   Das ist die eine Stelle, die sperrt, und zwar mit Grund am Feld: eine Karte ohne
   Namen findet er nicht wieder, eine ohne Position kann kein Team.
 - **Die Sicherung ist der einzige Rückweg.** Kein Papierkorb, kein Server. Deshalb
   steht in den Einstellungen, wann zuletzt gesichert wurde, und beim Löschen steht
   der Satz dabei. Einlesen überschreibt gleiche Kennungen und löscht nie.
+- **Im Team nur die passende Position — die EINE Sperre.** Sein Wort: „beim team
+  erstellen darf auf die position immer nur die passende position. mittelfeld nur ins
+  mittelfeld. keine umgehung." `fitsSlot` in `core/team.ts`, gelesen vom Auswähler
+  (der nichts anderes anbietet und die Regel oben hinschreibt) UND beim Setzen (sonst
+  hinge die Regel an einer Liste). Die Warnung „falsche Position" bleibt trotzdem:
+  für ein Team von früher und für eine Karte, deren Position nachträglich geändert
+  wurde.
 
 ## Übernommen aus Chardex35, weil dort teuer bezahlt
 
@@ -159,40 +177,100 @@ Karte das Beste wäre), **„lieber Wert für Wert abfragen. Mit so wenigen Klic
 möglich."** Nicht neu fragen, ob man die Erkennung „doch mal" einbauen soll — er hat
 die Kosten gesehen und nein gesagt.
 
-Gebaut als `pages/CardWizardPage.tsx`, fünf Schirme: **Foto → Name → Verein →
-Position → Werte (ATT, DEF, Wert)**, danach sofort das Foto der nächsten Karte. Das
-volle Formular (`CardFormPage`) bleibt dem Bearbeiten.
+Gebaut als `pages/CardWizardPage.tsx`, fünf Schirme — nach seiner Liste vom zweiten
+Tag (nächster Abschnitt): **Foto → Nummer → Name → Position → Werte (DEF, ATT,
+Wert)**, danach sofort das Foto der nächsten Karte. Das Formular (`CardFormPage`)
+ist nur noch zum Bearbeiten.
 
-Fünf Entscheidungen sind eine Notiz wert:
+Vier Entscheidungen sind eine Notiz wert:
 
-- **Was sich selten ändert, bleibt stehen** (Saison, Kartenart, Tor-Wert, Anzahl,
-  Sammlung) und steht als eine Zeile „Bleibt stehen: …" mit „ändern" unter dem
-  Schritt. Was sich fast immer ändert, wird abgefragt. **Der Verein wird abgefragt,
-  nicht behalten**: ein Päckchen ist gemischt, ein vorbelegter Verein wäre meistens
-  der falsche — stattdessen die zuletzt benutzten als Knöpfe (ein Tipp springt
-  weiter). Nach ein paar Karten sind damit alle Vereine der Liga einen Tipp entfernt.
-- **Enter ist Weiter.** Die Tastatur geht zwischen Name, Verein, ATT, DEF und Wert
-  nicht zu; `enterKeyHint` sagt der iPhone-Tastatur, was die Taste tut, und Enter im
-  Wert speichert. Ein Tipp auf Vereins-Knopf oder Position springt von selbst.
-- **`flushSync` beim Schirmwechsel ist Pflicht, kein Zierrat.** Das nächste Feld muss
+- **Was sich selten ändert, bleibt stehen** (Saison, Anzahl, Sammlung) und steht als
+  eine Zeile „Bleibt stehen: …" mit „ändern" unter dem Schritt. Was sich von Karte zu
+  Karte ändert, wird abgefragt.
+- **`flushSync` beim Schirmwechsel ist Pflicht, kein Zierrat.** Das Namensfeld muss
   NOCH IM TIPP fokussiert werden — erst rendern, dann `focus()`, beides in derselben
-  Berührung —, sonst öffnet iOS die Tastatur nicht, und er tippt einmal mehr.
-- **Die Saison der ersten Karte ist die der zuletzt angelegten**, sonst die laufende
-  (`CURRENT_SEASONS[0]`). Eine leere Saison wäre eine Frage mehr je Sitzung.
+  Berührung —, sonst öffnet iOS die Tastatur nicht, und er tippt einmal mehr. Seit dem
+  Zifferblock ist der Name das einzige Feld, das die Tastatur des Geräts braucht.
+- **Enter ist Weiter — aber nur, wo es ein Enter gibt.** Die erste Fassung verließ sich
+  darauf auch bei ATT, DEF und Wert; das Zahlenfeld des iPhones hat aber KEINE
+  Weiter-Taste (Zifferblock, nächster Abschnitt). Am Namensfeld stimmt es:
+  `enterKeyHint` sagt der Tastatur, was die Taste tut.
 - **Der kostenlose Trick steht als Hinweis am Namensfeld:** die iPhone-Tastatur kann
   Text scannen. Das ist die einzige Erkennung, die nichts kostet und nichts
   wegschickt.
 
+## Neun Punkte nach dem zweiten Tag — und ein Zifferblock, den keiner bestellt hat
+
+Seine Liste, in einer Nachricht: Verein raus · Tor-Wert raus · Kartennummer rein
+(„soweit ich weiss immer 3 stellig") · Version und Edition raus · DEF vor ATT, beide
+ausgeschrieben EN und DE · Saison optional und leer · Bild kleiner · Namen merken
+(„Wenn J eingetippt wurde direkt alle Namen mit J anzeigen") · im Team nur die
+passende Position, „keine umgehung". Die Entscheidungen stehen oben bei „Was er
+entschieden hat"; hier steht, was beim Bauen dazukam.
+
+### Der Zifferblock: eine Korrektur an der Runde davor
+
+Die Runde davor hatte „Enter ist Weiter" als Kern — und für die ZAHLEN war das ein
+Versprechen, das das iPhone nicht hält: sein Zahlenfeld (`inputMode="numeric"`,
+ebenso `decimal`) hat keine Return-Taste. Zwischen ATT, DEF und Wert hätte er jedes
+Mal das nächste Feld antippen müssen, also genau den Klick, den er nicht will. Ich
+habe es nicht am Gerät gesehen (kein Safari hier), aber es ist dokumentiertes
+iOS-Verhalten, und die Alternative wäre gewesen, ihn noch einmal danach zu fragen.
+
+Deshalb ein eigener Zifferblock in der Seite (`ui/Keypad.tsx`): Tasten mindestens
+56 px, Weiter ist ein Knopf der Seite, nichts muss erst aufgehen. Vier Dinge daran:
+
+- **Die Nummer springt nach der dritten Ziffer von selbst weiter** — das sind seine
+  „3 stellig" wörtlich genommen. Weniger Ziffern (oder keine) brauchen den Knopf, mehr
+  gehen im Formular, nicht hier: der Block kennt nur Ziffern.
+- **Außer die Nummer gibt es schon.** Dann bleibt der Schirm stehen und zeigt „Schon in
+  dieser Sammlung: Kane (1×)" mit „Anzahl erhöhen statt neu anlegen" — ein Tipp statt
+  vier Schirme, und die Anzahl ist seine Regel für gleiche Karten. Der Knopf darunter
+  heißt dann „Trotzdem neu anlegen". Die NUMMER ist die Kennung (`findDuplicates`),
+  der Name nur noch der Rückfall ohne Nummer; gleiche Sammlung und gleiche Saison
+  bleiben Bedingung.
+- **DEF, ATT und Wert sind EIN Schirm** mit drei Feldern und einem Block: Weiter
+  wandert von Feld zu Feld, beim Wert heißt es „Speichern · nächste Karte". Ein Tipp
+  auf ein Feld macht es wieder aktiv — zum Korrigieren. Die Punkt-Taste gibt es nur
+  beim Wert.
+- **Die Nummer ist TEXT**, kein Zahlenfeld im Schema: eine führende Null („007") und
+  ein Buchstabe einer Sonderkarte gingen sonst verloren, und gerechnet wird mit ihr
+  nie. Im Formular ist sie ein Textfeld mit Zahlenblock.
+
+### Namen merken: Wortanfang, beide Sammlungen
+
+`nameSuggestions` trifft am Anfang des Namens ODER eines Wortes darin — „Kane" findet
+„Harry Kane". Und es liest ALLE Karten (`useAllCards`, `toArray()` ist Safari-fest):
+derselbe Spieler steckt in seiner Mappe und in der seines Sohnes. Ein Tipp auf den
+Vorschlag setzt den Namen und springt zur Position. Die Vorschläge kosten je Karte
+eine Abfrage über alle Zeilen samt kleinem Bild — bei ein paar hundert Karten in
+Ordnung, bei tausenden wäre das die Stelle, an der man zuerst nachsieht.
+
+### Was die Strecke gefunden hat
+
+- **Ein echter Fehler, nicht von dieser Runde:** der Auswähler im Team bleibt im Baum,
+  wenn das Blatt zu ist, und trug die Suche vom vorigen Platz still weiter — der nächste
+  Platz bekam „keine passende Karte" für eine Nummer, nach der niemand mehr suchte.
+  Gefunden, weil die Strecke zum ersten Mal VOR dem Schließen gesucht hat. Jetzt leert
+  ein Platzwechsel die Suche, und die Strecke prüft es.
+- **Zwei Sonden, die die App anklagten, obwohl sie recht hatte.** „V" lieferte fünf
+  Vorschläge statt vier — „Mittelfeld Vier" trifft am Wortanfang, genau die Regel, die
+  ich selbst gebaut hatte. Und „Torwart Eins" war kein Doppel, weil er OHNE Saison
+  angelegt war und der Entwurf auf 25/26 stand: gleiche Saison ist Bedingung. Beide
+  Male stand die Erwartung in der Sonde falsch, nicht die Regel in der App.
+- **Die Fotogröße lässt sich nur mit einem Bild ÜBER der Grenze prüfen.** Die alte
+  Probe war 630 × 880 und wäre unverändert durchgegangen — „höchstens 900 px" hätte
+  nichts bewiesen. Jetzt 1260 × 1760, gemessen über die Sicherung: 644 × 900, das
+  kleine Bild 240, die Datei unter 150 KB.
+
 ## Noch offen
 
-- **`CardFormPage` trägt noch den Anlege-Zweig** (Serienmodus-Kästchen,
-  Speichern-Leiste), der seit dem Assistenten nicht mehr erreichbar ist. Beim nächsten
-  Anfassen des Formulars auf Bearbeiten eindampfen; `serialMode` in den Einstellungen
-  wird dann frei.
-
-- **Was der Tor-Wert bedeutet.** Er prüft es an seinen Karten; bis dahin ist es ein
-  Zahlenfeld ohne Wirkung auf das Team.
+- **Am Gerät ungeprüft: öffnet sich die Tastatur, wenn die dritte Ziffer zum Namen
+  springt?** Der Sprung passiert im Tipp auf eine Taste des Zifferblocks, also in einer
+  Berührung — das ist der Weg, der beim Foto-Knopf funktioniert. Kein Safari hier.
+  Wenn er jedes Mal ins Namensfeld tippen muss, ist das der nächste Fehler.
 - **Ob dieselbe Karte zweimal im Team stehen darf**, wenn er sie zweimal hat. Heute:
   einmal je Team (eine Karte, die schon steht, tauscht ihren Platz).
-- **Die Namen der Kartenarten der Saison 25/26** stehen nirgends fest; das Feld ist
-  frei und schlägt vor, was er schon getippt hat.
+- **Verein, Tor-Wert und Kartenart ganz aus dem Schema nehmen** — erst mit seinem Wort,
+  weil es die getippten Werte vom ersten Tag löscht. Bis dahin liegen sie unsichtbar in
+  alten Zeilen.

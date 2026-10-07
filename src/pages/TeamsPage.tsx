@@ -53,11 +53,11 @@ export function TeamsPage() {
                       <span className="shrink-0 text-xs text-slate-400">{t.formation}</span>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-4 text-sm tabular-nums text-slate-300">
-                      <span>
-                        <strong className="text-slate-100">{totals.att}</strong> ATT
-                      </span>
-                      <span>
+                      <span title={S.card.defLong}>
                         <strong className="text-slate-100">{totals.def}</strong> DEF
+                      </span>
+                      <span title={S.card.attLong}>
+                        <strong className="text-slate-100">{totals.att}</strong> ATT
                       </span>
                       <span>{formatValue(totals.valueTenths)}</span>
                       <span className="text-slate-500">{S.teams.slotsOf(totals.filled)}</span>

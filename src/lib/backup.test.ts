@@ -13,7 +13,7 @@ describe("Sicherungsformat", () => {
 
   it("liest eine gültige Sicherung und füllt Standardwerte nach", () => {
     const b = parseBackup(JSON.stringify(gueltig));
-    expect(b.cards[0]?.goals).toBe(1);
+    expect(b.cards[0]?.number).toBe("");
     expect(b.cards[0]?.qty).toBe(1);
     expect(b.teams[0]?.slots).toHaveLength(11);
     expect(b.teams[0]?.slots[0]).toBe("k1");
