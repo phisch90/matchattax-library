@@ -6,7 +6,7 @@ import { normalizeSeason, seasonChoices } from "../core/seasons.js";
 import { parseValueTenths } from "../core/value.js";
 import type { CardRow } from "../db/db.js";
 import { CardRepo } from "../db/repo.js";
-import { useAllCards, useCards, useCollections, useObjectUrl } from "../lib/hooks.js";
+import { useAllCards, useAppSettings, useCards, useCollections, useObjectUrl } from "../lib/hooks.js";
 import { shrinkPhoto, type ShrunkPhoto } from "../lib/image.js";
 import { navigate } from "../lib/router.js";
 import { HREF } from "../lib/routes.js";
@@ -55,7 +55,7 @@ type ValueKey = "def" | "att" | "wert";
 const VALUE_KEYS: readonly ValueKey[] = ["def", "att", "wert"];
 const NUMBER_DIGITS = 3;
 /** Wie viele der wartenden Fotos als kleine Bilder gezeigt werden; der Rest ist eine Zahl. */
-const STRIP_MAX = 5;
+const STRIP_MAX = 8;
 
 /** Ein Foto in der Warteschlange: die Datei, und sobald fertig, die verkleinerte Fassung. */
 interface QueuedPhoto {
@@ -82,8 +82,10 @@ let nextQueueId = 1;
 
 export function CardWizardPage() {
   const collectionsState = useCollections();
+  const settings = useAppSettings();
   const current = collectionsState.current;
   const [draft, setDraft] = useState<CardInput | null>(null);
+  const [zoom, setZoom] = useState(false);
   const [step, setStep] = useState<Step>("foto");
   const [active, setActive] = useState<ValueKey>("def");
   const [pending, setPending] = useState<ShrunkPhoto | null>(null);
@@ -105,7 +107,8 @@ export function CardWizardPage() {
   const cards = useCards(draft?.collectionId ?? current?.id);
   const allCards = useAllCards();
   const seasonOptions = useMemo(() => seasonChoices(uniqueValues(cards, (c) => c.season)), [cards]);
-  const previewUrl = useObjectUrl(pending?.thumb);
+  // Das GROSSE Bild, nicht das kleine: er liest die Werte vom Foto ab, während er tippt.
+  const previewUrl = useObjectUrl(pending?.full);
 
   // Der erste Entwurf: OHNE Saison („Wenn nichts gewählt dann leer lassen").
   useEffect(() => {
@@ -118,7 +121,7 @@ export function CardWizardPage() {
     const next = queue.find((q) => q.shrunk === null && !q.failed);
     if (next === undefined || shrinking.current) return;
     shrinking.current = true;
-    shrinkPhoto(next.file)
+    shrinkPhoto(next.file, { crop: settings.autoCrop })
       .then((shrunk) => setQueue((q) => q.map((x) => (x.id === next.id ? { ...x, shrunk } : x))))
       .catch((error: unknown) => {
         console.error(error);
@@ -127,7 +130,7 @@ export function CardWizardPage() {
       .finally(() => {
         shrinking.current = false;
       });
-  }, [queue]);
+  }, [queue, settings.autoCrop]);
 
   // Die Karte wartet auf ihr Foto: sobald das vorderste fertig ist, wird es ihres.
   useEffect(() => {
@@ -360,19 +363,12 @@ export function CardWizardPage() {
   return (
     <div className="space-y-3" data-testid="wizard" data-step={step} data-queue={queue.length} data-awaiting={awaiting ? "1" : "0"}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          {previewUrl !== undefined ? (
-            <img src={previewUrl} alt="" className="h-12 w-9 shrink-0 rounded object-cover" data-testid="wizard-thumb" />
-          ) : (
-            awaiting && <div className="h-12 w-9 shrink-0 animate-pulse rounded bg-slate-800" aria-hidden="true" />
-          )}
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold">{S.wizard.title}</h1>
-            <p className="text-xs text-slate-500">
-              {S.wizard.stepOf(stepIndex + 1, STEPS.length)} · {S.wizard.steps[step]}
-              {savedCount > 0 && <span className="text-emerald-300"> · {S.wizard.saved(savedCount)}</span>}
-            </p>
-          </div>
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold">{S.wizard.title}</h1>
+          <p className="text-xs text-slate-500">
+            {S.wizard.stepOf(stepIndex + 1, STEPS.length)} · {S.wizard.steps[step]}
+            {savedCount > 0 && <span className="text-emerald-300"> · {S.wizard.saved(savedCount)}</span>}
+          </p>
         </div>
         <Btn onClick={leave}>{S.wizard.leave}</Btn>
       </div>
@@ -396,18 +392,43 @@ export function CardWizardPage() {
         </div>
       )}
 
-      {/* Was noch wartet: die nächsten Fotos klein, der Rest als Zahl. */}
-      {queue.length > 0 && (
-        <div className="flex items-center gap-2 text-xs text-slate-400" data-testid="queue">
-          <div className="flex gap-1">
-            {queue.slice(0, STRIP_MAX).map((q) => (
-              <QueueThumb key={q.id} photo={q.shrunk} />
-            ))}
-          </div>
-          {queue.length > STRIP_MAX && <span className="tabular-nums">{S.wizard.queueMore(queue.length - STRIP_MAX)}</span>}
-          <span className="tabular-nums" data-testid="queue-count">
-            {S.wizard.queueWaiting(queue.length)}
-          </span>
+      {/*
+        Das Foto der Karte, die dran ist, GROSS — „bei der Sammelbearbeitung sollten die
+        Bilder größer sein, da man die so kaum erkennt". Er liest Nummer und Werte vom
+        Foto ab; ein Tipp darauf zeigt es bildschirmfüllend. Daneben, was noch wartet.
+      */}
+      {((step !== "foto" && hasPhoto) || queue.length > 0) && (
+        <div className="flex gap-3" data-testid="photo-panel">
+          {step !== "foto" && hasPhoto && (
+            <button
+              type="button"
+              onClick={() => previewUrl !== undefined && setZoom(true)}
+              aria-label={S.wizard.photoZoom}
+              data-testid="photo-big"
+              className="shrink-0 overflow-hidden rounded-lg bg-slate-800"
+            >
+              {previewUrl !== undefined ? (
+                <img src={previewUrl} alt="" className="h-44 w-[7.9rem] object-cover" data-testid="wizard-thumb" />
+              ) : (
+                <div className="h-44 w-[7.9rem] animate-pulse" aria-hidden="true" />
+              )}
+            </button>
+          )}
+          {queue.length > 0 && (
+            <div className="min-w-0 flex-1" data-testid="queue">
+              <p className="mb-1 text-xs tabular-nums text-slate-400" data-testid="queue-count">
+                {S.wizard.queueWaiting(queue.length)}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {queue.slice(0, STRIP_MAX).map((q) => (
+                  <QueueThumb key={q.id} photo={q.shrunk} />
+                ))}
+                {queue.length > STRIP_MAX && (
+                  <span className="self-center text-xs tabular-nums text-slate-400">{S.wizard.queueMore(queue.length - STRIP_MAX)}</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -638,6 +659,27 @@ export function CardWizardPage() {
           </div>
         )}
       </section>
+
+      {zoom && previewUrl !== undefined && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-label={S.wizard.photoZoom}
+          onClick={() => setZoom(false)}
+          data-testid="photo-zoom"
+        >
+          <img src={previewUrl} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
+          <button
+            type="button"
+            onClick={() => setZoom(false)}
+            aria-label={S.common.close}
+            className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-lg text-slate-100"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -646,8 +688,8 @@ export function CardWizardPage() {
 function QueueThumb({ photo }: { photo: ShrunkPhoto | null }) {
   const url = useObjectUrl(photo?.thumb);
   return url === undefined ? (
-    <div className="h-8 w-6 animate-pulse rounded bg-slate-800" aria-hidden="true" />
+    <div className="h-16 w-[2.9rem] animate-pulse rounded bg-slate-800" aria-hidden="true" />
   ) : (
-    <img src={url} alt="" className="h-8 w-6 rounded object-cover" data-testid="queue-thumb" />
+    <img src={url} alt="" className="h-16 w-[2.9rem] rounded object-cover" data-testid="queue-thumb" />
   );
 }

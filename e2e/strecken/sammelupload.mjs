@@ -78,7 +78,22 @@ const nah = (farbe, [r, g, b]) => farbe !== null && Math.abs(farbe[0] - r) < 24 
   check("zwei Fotos warten", (await wartend(page)) === "2" && /2 Fotos warten/i.test(await lies(page, "queue-count")), await wartend(page));
   await page.waitForTimeout(1200);
   check("die wartenden Fotos sind als kleine Bilder da", (await page.locator('[data-testid="queue-thumb"]').count()) === 2);
+  // Groesse: das aktuelle Foto gross genug zum Ablesen, die wartenden erkennbar
+  const gross = await page.locator('[data-testid="wizard-thumb"]').boundingBox();
+  const klein = await page.locator('[data-testid="queue-thumb"]').first().boundingBox();
+  check("das aktuelle Foto ist mindestens 170 px hoch", gross !== null && gross.height >= 170, String(gross?.height));
+  check("ein wartendes Foto ist mindestens 60 px hoch", klein !== null && klein.height >= 60, String(klein?.height));
   await bild(page, "iphone-sammel-schlange");
+  // Ein Tipp auf das Foto zeigt es bildschirmfuellend, ein Tipp schliesst es wieder
+  await page.locator('[data-testid="photo-big"]').click();
+  await page.waitForTimeout(200);
+  const zoomBild = await page.locator('[data-testid="photo-zoom"] img').boundingBox();
+  // Eine Karte hochkant auf einem Handy hochkant: die BREITE begrenzt, 366 von 390 px — mehr geht nur gedreht.
+  check("Tipp auf das Foto: so breit wie der Schirm", zoomBild !== null && zoomBild.width >= 350 && zoomBild.height >= 480, `${zoomBild?.width}x${zoomBild?.height}`);
+  await bild(page, "iphone-sammel-zoom");
+  await page.locator('[data-testid="photo-zoom"] button[aria-label="Schließen"]').click();
+  await page.waitForTimeout(200);
+  check("Schliessen: Foto-Ansicht weg, Assistent noch bei der Nummer", (await page.locator('[data-testid="photo-zoom"]').count()) === 0 && (await schritt(page)) === "nummer");
 
   // Beenden mit voller Schlange fragt erst — und Weiter abarbeiten bleibt im Assistenten
   await page.getByRole("button", { name: /^Fertig$/ }).click();
@@ -125,6 +140,9 @@ const nah = (farbe, [r, g, b]) => farbe !== null && Math.abs(farbe[0] - r) < 24 
   check("Karte Amber traegt das amber Foto", nah(fa, [245, 158, 11]), String(fa));
   check("Karte Gruen traegt das gruene Foto (das dritte, nicht das uebersprungene blaue)", nah(fg, [34, 197, 94]), String(fg));
   check("Karte Blau traegt das blaue Foto", nah(fb, [59, 130, 246]), String(fb));
+  // Der Tisch ist weg: das Kachelbild hat Kartenformat, nicht das Format des Rahmens (0,80)
+  const masse = await page.locator('[data-testid="card-grid"] [data-card-id]').filter({ hasText: /Karte Amber/ }).locator("img").evaluate((el) => [el.naturalWidth, el.naturalHeight]);
+  check("das Foto ist auf die Karte zugeschnitten", masse[0] / masse[1] < 0.76 && masse[0] / masse[1] > 0.68, masse.join("x"));
   await bild(page, "iphone-sammel-sammlung");
 
   check("keine Seitenfehler", seitenfehler.length === 0, seitenfehler.join(" | "));
@@ -132,4 +150,4 @@ const nah = (farbe, [r, g, b]) => farbe !== null && Math.abs(farbe[0] - r) < 24 
   await ctx.close();
 }
 
-done(24);
+done(31);

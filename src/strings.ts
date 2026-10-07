@@ -27,6 +27,7 @@ export const S = {
     back: "Zurück",
     cancel: "Abbrechen",
     done: "Fertig",
+    close: "Schließen",
     loading: "Lädt …",
     all: "Alle",
     notFound: "Das gibt es nicht (mehr).",
@@ -110,6 +111,7 @@ export const S = {
     queueBusy: "Foto wird verkleinert …",
     queueFailed: "Ein Foto konnte nicht gelesen werden und wurde übersprungen.",
     photoDrop: "Dieses Foto überspringen",
+    photoZoom: "Foto groß ansehen",
     leaveAsk: (n: number): string =>
       `${n === 1 ? "1 Foto ist" : `${n} Fotos sind`} noch nicht abgearbeitet. Beenden nimmt sie aus der Warteschlange, nicht aus der Mediathek.`,
     leaveStay: "Weiter abarbeiten",
@@ -196,6 +198,10 @@ export const S = {
     importDone: (k: number): string => `${k} ${k === 1 ? "Karte" : "Karten"} eingelesen`,
     importBroken: "Das ist keine Sicherung dieser App.",
     importFailed: "Die Sicherung konnte nicht eingelesen werden.",
+    photos: "Fotos",
+    autoCrop: "Neue Fotos automatisch auf die Karte zuschneiden",
+    autoCropHint:
+      "Die App sucht die Karte am Rand gegen den Untergrund. Geht am besten auf einem einfarbigen, dunkleren Untergrund. Findet sie keine Karte, bleibt das Foto, wie es ist. Schon gespeicherte Fotos ändern sich nicht.",
     storage: "Speicher",
     storageUsed: (mb: string): string => `${mb} MB auf diesem Gerät belegt.`,
     storageUnknown: "Wie viel Platz belegt ist, sagt dieser Browser nicht.",

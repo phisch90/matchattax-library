@@ -107,7 +107,8 @@ export async function applyBackup(backup: Backup): Promise<ImportCounts> {
       full = await dataUrlToBlob(photo);
       if (thumb !== undefined) thumbBlob = await dataUrlToBlob(thumb);
       try {
-        const shrunk = await shrinkPhoto(full);
+        // Ohne Zuschnitt: die Sicherung wird eingelesen, wie sie war.
+        const shrunk = await shrinkPhoto(full, { crop: false });
         width = shrunk.width;
         height = shrunk.height;
         if (thumbBlob === null) thumbBlob = shrunk.thumb;

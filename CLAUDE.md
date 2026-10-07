@@ -292,12 +292,63 @@ Vier Entscheidungen sind eine Notiz wert:
   eigenen Fehlern (halb verkleinert, Gerät gewechselt) für einen Fall, der ein
   Neu-Auswählen kostet.
 
-Was im Kopf steht: das aktuelle Foto klein, darunter bis zu fünf wartende als Bilder
-und der Rest als Zahl („+7 · 12 Fotos warten"). Ein leerer, pulsierender Kasten ist ein
-Foto, das noch gerechnet wird.
+Was zu sehen ist: das aktuelle Foto und daneben die wartenden als Bilder, der Rest als
+Zahl („+7 · 12 Fotos warten") — die Größen stehen im nächsten Abschnitt, sie sind eine
+Runde später gewachsen. Ein leerer, pulsierender Kasten ist ein Foto, das noch
+gerechnet wird.
+
+## Zuschneiden auf die Karte — und das Foto groß, weil er davon abliest
+
+Zwei Sätze: „kannst du die bilder automatisch beschneiden? Sodass weniger hintergrund
+rand dran ist." und „bei der sammel bearbeitung sollten die bilder im übrigen größer
+sein, da man die so kaum erkennt."
+
+### Die Karte finden, ohne Dienst
+
+`core/crop.ts`, reine Rechnung auf Pixeln und deshalb ohne Browser prüfbar
+(`crop.test.ts`, acht Fälle mit gezeichneten Fotos). Der Gedanke: der RAND des Fotos
+ist der Tisch. Seine Farbe ist der Median der Randpixel je Kanal; alles, was sich davon
+deutlich abhebt, ist Vordergrund; das größte zusammenhängende Stück davon ist die
+Karte. Die Schwelle richtet sich nach der Unruhe des Randes selbst — eine Holzmaserung
+hebt sie an. Gerechnet wird auf einer Kopie mit 256 px, in Millisekunden; der Kasten
+wird auf das Original hochgerechnet, und beide Fassungen (900 und 240 px) zeigen
+denselben Ausschnitt.
+
+Drei Entscheidungen sind eine Notiz wert:
+
+- **Lieber nicht schneiden als falsch schneiden.** Der Kasten muss plausibel eine Karte
+  sein: Kartenformat (0,62 bis 0,88 breit zu hoch, bis etwa 15° Neigung, oder quer),
+  mindestens ein Zehntel des Bildes, nicht das ganze, gut gefüllt. Fällt eine Prüfung
+  durch, bleibt das Foto, wie es ist. Zwei Fälle gehen GRUNDSÄTZLICH nicht: eine Karte,
+  die dem Tisch ähnelt (helle Karte auf weißem Blatt), und ein Foto, das die Karte schon
+  randlos zeigt — dann ist der Rand die Karte selbst, und ihr Spielerbild sähe aus wie
+  das Motiv. Der Hinweis in den Einstellungen sagt deshalb: einfarbiger, dunklerer
+  Untergrund.
+- **Ein Schalter in den Einstellungen, Standard AN** (`autoCrop`), als Ausweg, falls die
+  Erkennung auf seinem Tisch danebengreift. Die Sicherung liest ohne Zuschnitt ein
+  (sie soll zurückbringen, was war), und schon gespeicherte Fotos ändern sich nicht —
+  dieselbe Regel wie bei der Größe.
+- **Die Probe der Strecken ist jetzt ein Foto wie seines**: Tisch mit Maserung, darauf
+  die Karte, der Rahmen ABSICHTLICH nicht im Kartenformat (1400 × 1760). So beweist
+  „gespeichert ist 644 × 900" den Zuschnitt — mit einem Rahmen im Kartenformat hätte
+  dieselbe Zahl auch ohne Zuschnitt dagestanden. Die Farbprobe an der Kachel prüft
+  nebenbei mit: ohne Zuschnitt wäre die Ecke braun.
+
+### Das Foto groß
+
+Das kleine Bild im Kopf (36 × 48 px) ist weg. Unter dem Fortschritt steht das Foto der
+Karte, die dran ist, 176 px hoch — und zwar die GROSSE Fassung, nicht das Listenbild,
+weil er Nummer und Werte davon abliest. Ein Tipp darauf zeigt es bildschirmfüllend
+(so breit wie der Schirm; eine Karte hochkant auf einem Handy hochkant ist durch die
+Breite begrenzt, mehr ginge nur gedreht), ein Tipp schließt es. Daneben die wartenden
+Fotos mit 46 × 64 px statt 24 × 32, bis zu acht, der Rest als Zahl.
 
 ## Noch offen
 
+- **Am Gerät ungeprüft: trifft das Zuschneiden seinen Tisch?** Die Erkennung ist an
+  gezeichneten Fotos geprüft, nicht an einem echten. Schneidet sie daneben, ist der
+  Schalter in den Einstellungen der Ausweg; schneidet sie gar nicht, liegt es fast
+  sicher am Untergrund (zu hell, zu ähnlich).
 - **Am Gerät ungeprüft: bietet der Foto-Knopf mit `multiple` weiter die Kamera an?** iOS
   zeigt bei mehreren erlaubten Dateien „Fotomediathek" mit Mehrfachauswahl; ob „Foto
   aufnehmen" daneben bleibt, sieht nur das Gerät. Wenn nicht, braucht es zwei Knöpfe.

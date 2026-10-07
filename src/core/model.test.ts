@@ -56,6 +56,10 @@ describe("Parser gegen alte und kaputte Zeilen", () => {
     const s = appSettingsSchema.parse({});
     expect(s.currentCollectionId).toBe("");
     expect(s.lastExportAt).toBe("");
+    // Zuschneiden ist AN, auch wenn das Feld auf dem Gerät noch fehlt; Unsinn fällt auf AN.
+    expect(s.autoCrop).toBe(true);
+    expect(appSettingsSchema.parse({ autoCrop: "nein" }).autoCrop).toBe(true);
+    expect(appSettingsSchema.parse({ autoCrop: false }).autoCrop).toBe(false);
     // `serialMode` lag auf seinem Gerät — ein unbekannter Schlüssel wird abgestreift, nicht beanstandet.
     const alt = appSettingsSchema.parse({ serialMode: true, currentCollectionId: "a" });
     expect(alt.currentCollectionId).toBe("a");
