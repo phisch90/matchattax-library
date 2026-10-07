@@ -4,6 +4,7 @@ import { ensureSeeded } from "../db/repo.js";
 import { useRoute } from "../lib/router.js";
 import { HREF, navSection } from "../lib/routes.js";
 import { CardFormPage } from "../pages/CardFormPage.js";
+import { CardWizardPage } from "../pages/CardWizardPage.js";
 import { CollectionPage } from "../pages/CollectionPage.js";
 import { SettingsPage } from "../pages/SettingsPage.js";
 import { TeamPage } from "../pages/TeamPage.js";
@@ -28,7 +29,8 @@ export function App() {
       page = <CollectionPage />;
       break;
     case "karteNeu":
-      page = <CardFormPage id={null} />;
+      // Anlegen in Serie, Wert für Wert — das volle Formular bleibt dem Bearbeiten.
+      page = <CardWizardPage />;
       break;
     case "karte":
       // Der Schlüssel erzwingt ein frisches Formular je Karte — sonst bliebe der Entwurf der vorigen stehen.

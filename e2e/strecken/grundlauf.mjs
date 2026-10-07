@@ -21,21 +21,45 @@ import {
 const { check, done } = createReport("grundlauf");
 const POS = { gk: 0, def: 1, mid: 2, att: 3 };
 
-/** Eine Karte im Formular eintragen und speichern (Serienmodus bleibt an). */
-async function legeKarte(page, { name, pos, att, def, wert, foto }) {
-  if (!/#\/karte\/neu/.test(page.url())) throw new Error(`nicht im Formular, sondern ${page.url()}`);
+/**
+ * Eine Karte durch den Assistenten tragen: Foto (oder ohne) -> Name -> Verein ->
+ * Position -> Werte -> Speichern. Enter auf der Tastatur ist `Weiter`. WIRFT, wenn
+ * der Assistent nicht am Foto-Schritt steht — sonst klickt die Strecke ins Leere und
+ * klagt danach die App an.
+ */
+async function legeKarte(page, { name, pos, att, def, wert, foto, club }) {
+  if (!/#\/karte\/neu/.test(page.url())) throw new Error(`nicht im Assistenten, sondern ${page.url()}`);
+  if ((await schritt(page)) !== "foto") throw new Error(`Assistent steht auf ${await schritt(page)}, nicht auf foto`);
   if (foto) {
-    await page.locator('input[type=file][accept="image/*"]').first().setInputFiles(foto);
-    await page.waitForTimeout(600);
+    await page.locator('input[type=file][accept="image/*"]').setInputFiles(foto);
+    await page.waitForTimeout(700);
+  } else {
+    await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
   }
   await page.fill("#karte-name", name);
+  await page.press("#karte-name", "Enter");
+  if (club !== undefined) {
+    const chip = page.locator('[role="group"][aria-label="Verein"] button').filter({ hasText: club });
+    if ((await chip.count()) > 0) await chip.first().click();
+    else {
+      await page.fill("#karte-club", club);
+      await page.press("#karte-club", "Enter");
+    }
+  } else {
+    await page.press("#karte-club", "Enter");
+  }
   await page.locator('[role="group"][aria-label="Position"] button').nth(POS[pos]).click();
   await page.fill("#karte-att", String(att));
+  await page.press("#karte-att", "Enter");
   await page.fill("#karte-def", String(def));
+  await page.press("#karte-def", "Enter");
   await page.fill("#karte-wert", wert);
-  await page.getByRole("button", { name: /Speichern/ }).click();
+  await page.press("#karte-wert", "Enter");
   await page.waitForTimeout(500);
 }
+
+/** Auf welchem Schritt der Assistent steht — aus dem DOM, nicht aus dem Text. */
+const schritt = (page) => page.locator('[data-testid="wizard"]').getAttribute("data-step");
 
 async function kacheln(page) {
   return page.locator('[data-testid="card-grid"] [data-card-id]').count();
@@ -79,46 +103,77 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   check("Philipp und Sohn", /Philipp/.test(await umschalter.nth(0).innerText()) && /Sohn/.test(await umschalter.nth(1).innerText()));
   check("kein seitlicher Ueberlauf (Start)", (await ueberlauf(page)) <= 1);
 
-  // ---- Karte anlegen, mit Foto, im Serienmodus
+  // ---- Karte anlegen: der Assistent, Wert fuer Wert
   await page.locator("a").filter({ hasText: /\+ Karte/ }).click();
   await page.waitForTimeout(600);
-  check("Formular fuer neue Karte offen", /#\/karte\/neu/.test(page.url()), page.url());
-  check("Serienmodus ist voreingestellt an", await page.locator('input[type=checkbox]').first().isChecked());
-  await page.locator('[role="group"][aria-label="Saison"] button').filter({ hasText: /^25\/26$/ }).click();
-  await page.fill("#karte-club", "FC Probe");
+  check("Assistent fuer neue Karte offen", /#\/karte\/neu/.test(page.url()), page.url());
+  check("erster Schritt ist das Foto", (await schritt(page)) === "foto", String(await schritt(page)));
+  check("Saison ist vorbelegt", /\d\d\/\d\d/.test(await lies(page, "kept-line")), await lies(page, "kept-line"));
 
-  // Speichern ohne Namen und Position: wird angemeckert, nicht gespeichert
-  await page.getByRole("button", { name: /Speichern/ }).click();
-  await page.waitForTimeout(300);
-  check("ohne Namen: Hinweis statt Speichern", /Ohne Namen geht es nicht/i.test(await bodyText(page)));
-  check("ohne Position: Hinweis", /Position w[aä]hlen/i.test(await bodyText(page)));
+  // Saison einmal auf 25/26 stellen — sie bleibt dann fuer alle weiteren Karten stehen
+  await page.getByRole("button", { name: /^ändern$/ }).click();
+  await page.locator('[role="group"][aria-label="Saison"] button').filter({ hasText: /^25\/26$/ }).click();
+  check("Saison steht in der Bleibt-Zeile", /25\/26/.test(await lies(page, "kept-line")), await lies(page, "kept-line"));
+  await page.getByRole("button", { name: /^ändern$/ }).click();
+
+  // Ohne Namen gibt es kein Weiter
+  await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
+  check("ohne Foto: beim Namen", (await schritt(page)) === "name");
+  await page.press("#karte-name", "Enter");
+  check("ohne Namen: Hinweis statt Weiter", /Ohne Namen geht es nicht/i.test(await bodyText(page)) && (await schritt(page)) === "name");
+  await page.getByRole("button", { name: /^Zurück$/ }).click();
+  check("Zurueck fuehrt zum Foto", (await schritt(page)) === "foto");
 
   const foto = await probeFoto(page);
-  await legeKarte(page, { name: "Torwart Eins", pos: "gk", att: 10, def: 80, wert: "9.5", foto });
+  await legeKarte(page, { name: "Torwart Eins", club: "FC Probe", pos: "gk", att: 10, def: 80, wert: "9.5", foto });
   check("Bestaetigung nach dem Speichern", /Gespeichert: Torwart Eins/i.test(await bodyText(page)));
-  check("Serienmodus: Name ist wieder leer", (await page.inputValue("#karte-name")) === "");
-  check("Serienmodus: Verein bleibt stehen", (await page.inputValue("#karte-club")) === "FC Probe");
-  check(
-    "Serienmodus: Saison bleibt gewaehlt",
-    (await page.locator('[role="group"][aria-label="Saison"] button[aria-pressed="true"]').innerText()) === "25/26",
-  );
-  check("Serienmodus: Foto ist weg", (await page.locator("section img").count()) === 0);
-  check("Serienmodus: keine Position vorgewaehlt", (await page.locator('[role="group"][aria-label="Position"] button[aria-pressed="true"]').count()) === 0);
+  check("danach wieder beim Foto der naechsten Karte", (await schritt(page)) === "foto");
+  check("Zaehler: 1 Karte gespeichert", /1 Karte gespeichert/i.test(await bodyText(page)));
+  check("Foto der vorigen Karte ist weg", (await page.locator('[data-testid="wizard-thumb"]').count()) === 0);
+  check("Saison bleibt stehen", /25\/26/.test(await lies(page, "kept-line")));
 
-  // Der Rest der Mannschaft: 4 VER, 4 MIT, 3 ANG — alle 9.5M, damit 11 Karten 104.5M ergeben
-  for (const n of ["Eins", "Zwei", "Drei", "Vier"]) await legeKarte(page, { name: `Verteidiger ${n}`, pos: "def", att: 30, def: 70, wert: "9,5" });
-  for (const n of ["Eins", "Zwei", "Drei", "Vier"]) await legeKarte(page, { name: `Mittelfeld ${n}`, pos: "mid", att: 60, def: 60, wert: "9.5" });
-  for (const n of ["Eins", "Zwei", "Drei"]) await legeKarte(page, { name: `Stuermer ${n}`, pos: "att", att: 85, def: 30, wert: "9.5M" });
+  // Der zuletzt benutzte Verein steht als Knopf, die Position hat kein Weiter ohne Wahl
+  await bild(page, "iphone-schritt-foto");
+  await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
+  await page.fill("#karte-name", "Verteidiger Eins");
+  await bild(page, "iphone-schritt-name");
+  await page.press("#karte-name", "Enter");
+  check("Verein-Schritt", (await schritt(page)) === "verein");
+  await bild(page, "iphone-schritt-verein");
+  const vereinChip = page.locator('[role="group"][aria-label="Verein"] button').filter({ hasText: /^FC Probe$/ });
+  check("zuletzt benutzter Verein steht als Knopf", (await vereinChip.count()) === 1);
+  await vereinChip.click();
+  check("Vereins-Knopf springt zur Position", (await schritt(page)) === "position");
+  await bild(page, "iphone-schritt-position");
+  check("Position: vier Knoepfe, kein Weiter", (await page.locator('[role="group"][aria-label="Position"] button').count()) === 4 && (await page.getByRole("button", { name: /^Weiter$/ }).count()) === 0);
+  await page.locator('[role="group"][aria-label="Position"] button').nth(POS.def).click();
+  check("Position springt zu den Werten", (await schritt(page)) === "werte");
+  await page.fill("#karte-att", "30");
+  await page.press("#karte-att", "Enter");
+  await page.fill("#karte-def", "70");
+  await page.press("#karte-def", "Enter");
+  await page.fill("#karte-wert", "9,5");
+  await bild(page, "iphone-schritt-werte");
+  await page.press("#karte-wert", "Enter");
+  await page.waitForTimeout(500);
+  check("Enter im Wert speichert", /Gespeichert: Verteidiger Eins/i.test(await bodyText(page)) && (await schritt(page)) === "foto");
+
+  // Der Rest der Mannschaft: 3 weitere VER, 4 MIT, 3 ANG — alle 9.5M, damit 11 Karten 104.5M ergeben
+  for (const n of ["Zwei", "Drei", "Vier"]) await legeKarte(page, { name: `Verteidiger ${n}`, club: "FC Probe", pos: "def", att: 30, def: 70, wert: "9,5" });
+  for (const n of ["Eins", "Zwei", "Drei", "Vier"]) await legeKarte(page, { name: `Mittelfeld ${n}`, club: "FC Probe", pos: "mid", att: 60, def: 60, wert: "9.5" });
+  for (const n of ["Eins", "Zwei", "Drei"]) await legeKarte(page, { name: `Stuermer ${n}`, club: "FC Probe", pos: "att", att: 85, def: 30, wert: "9.5M" });
+  check("Zaehler zaehlt mit: 12 Karten", /12 Karten gespeichert/i.test(await bodyText(page)));
 
   // Doppelt-Hinweis: dieselbe Karte noch einmal
+  await page.getByRole("button", { name: /Ohne Foto weiter/i }).click();
   await page.fill("#karte-name", "Torwart Eins");
   await page.waitForTimeout(400);
   check("Doppelt-Hinweis erscheint", /schon \(1×\)/i.test(await bodyText(page)));
   await page.getByRole("button", { name: /Anzahl erh/i }).click();
   await page.waitForTimeout(500);
-  check("Anzahl erhoeht statt neu angelegt", /jetzt 2×/i.test(await bodyText(page)));
-  check("kein Browser-Dialog im Formular", dialoge.length === 0, dialoge.join(" | "));
-  await bild(page, "iphone-formular");
+  check("Anzahl erhoeht statt neu angelegt", /jetzt 2×/i.test(await bodyText(page)) && (await schritt(page)) === "foto");
+  check("kein Browser-Dialog im Assistenten", dialoge.length === 0, dialoge.join(" | "));
+  await bild(page, "iphone-assistent");
 
   // ---- Sammlung
   await gehe(page, /Sammlung/);
@@ -346,4 +401,4 @@ for (const [name, w, h] of [["ipad-quer", 1180, 820], ["ipad-hoch", 820, 1180]])
   await ctx.close();
 }
 
-done(90);
+done(100);
