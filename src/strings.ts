@@ -54,8 +54,9 @@ export const S = {
   card: {
     editTitle: "Karte",
     photo: "Foto",
-    photoAdd: "Foto aufnehmen oder wählen",
-    photoAddHint: "Das Gerät fragt dann: Kamera oder Fotomediathek.",
+    photoAdd: "Foto aufnehmen oder Fotos wählen",
+    photoAddHint:
+      "Das Gerät fragt dann: Kamera oder Mediathek. Aus der Mediathek kannst du mehrere Fotos auf einmal wählen, sie kommen der Reihe nach dran.",
     photoRemove: "Foto entfernen",
     photoNone: "Noch kein Foto",
     photoFailed: "Das Foto konnte nicht gelesen werden.",
@@ -104,6 +105,15 @@ export const S = {
     steps: { foto: "Foto", nummer: "Nummer", name: "Name", position: "Position", werte: "Werte" },
     stepOf: (n: number, of: number): string => `Schritt ${n} von ${of}`,
     photoSkip: "Ohne Foto weiter",
+    queueWaiting: (n: number): string => (n === 1 ? "1 Foto wartet" : `${n} Fotos warten`),
+    queueMore: (n: number): string => `+${n}`,
+    queueBusy: "Foto wird verkleinert …",
+    queueFailed: "Ein Foto konnte nicht gelesen werden und wurde übersprungen.",
+    photoDrop: "Dieses Foto überspringen",
+    leaveAsk: (n: number): string =>
+      `${n === 1 ? "1 Foto ist" : `${n} Fotos sind`} noch nicht abgearbeitet. Beenden nimmt sie aus der Warteschlange, nicht aus der Mediathek.`,
+    leaveStay: "Weiter abarbeiten",
+    leaveAnyway: "Trotzdem beenden",
     numberAsk: "Welche Nummer hat die Karte?",
     numberHint: "Nach der dritten Ziffer geht es von selbst weiter.",
     numberSkip: "Ohne Nummer weiter",

@@ -24,6 +24,15 @@ import { Btn, Chip, Field, INPUT, POSITION_TONE, Segmented } from "../ui/bits.js
  * von Karte zu Karte selten ändert (Saison, Anzahl, Sammlung), bleibt stehen und ist
  * über „ändern" erreichbar.
  *
+ * SAMMELUPLOAD („Ich kann in einem Rutsch mehrere Spieler-Bilder hochladen und dann
+ * nacheinander abarbeiten"): das Foto-Feld nimmt mehrere Dateien. Sie stehen in einer
+ * WARTESCHLANGE (`queue`), das vorderste ist die Karte, die gerade dran ist
+ * (`pending`); nach dem Speichern kommt sofort das nächste Foto an die Reihe, ohne den
+ * Foto-Schirm. Verkleinert wird im HINTERGRUND, eines nach dem anderen, während er
+ * tippt — fünfzig iPhone-Fotos am Stück würden sonst eine Viertelminute Wartezeit
+ * vor der ersten Karte kosten. Nur das Speichern wartet, falls das Foto der Karte noch
+ * nicht fertig ist (`awaiting`).
+ *
  * Die Zahlen werden auf einem EIGENEN Zifferblock getippt (`ui/Keypad.tsx`), nicht auf
  * der Tastatur des Geräts: das Zahlenfeld des iPhones hat keine Weiter-Taste. Die
  * Nummer springt nach der dritten Ziffer von selbst weiter („soweit ich weiss immer
@@ -45,6 +54,16 @@ const STEPS: readonly Step[] = ["foto", "nummer", "name", "position", "werte"];
 type ValueKey = "def" | "att" | "wert";
 const VALUE_KEYS: readonly ValueKey[] = ["def", "att", "wert"];
 const NUMBER_DIGITS = 3;
+/** Wie viele der wartenden Fotos als kleine Bilder gezeigt werden; der Rest ist eine Zahl. */
+const STRIP_MAX = 5;
+
+/** Ein Foto in der Warteschlange: die Datei, und sobald fertig, die verkleinerte Fassung. */
+interface QueuedPhoto {
+  id: number;
+  file: File;
+  shrunk: ShrunkPhoto | null;
+  failed: boolean;
+}
 
 function emptyDraft(collectionId: string, season: string): CardInput {
   return { collectionId, season, number: "", name: "", position: "mid", att: 0, def: 0, valueTenths: 0, qty: 1, note: "" };
@@ -59,6 +78,8 @@ function uniqueValues(rows: readonly CardRow[] | undefined, pick: (row: CardRow)
   return [...set].sort((a, b) => a.localeCompare(b, "de"));
 }
 
+let nextQueueId = 1;
+
 export function CardWizardPage() {
   const collectionsState = useCollections();
   const current = collectionsState.current;
@@ -66,7 +87,10 @@ export function CardWizardPage() {
   const [step, setStep] = useState<Step>("foto");
   const [active, setActive] = useState<ValueKey>("def");
   const [pending, setPending] = useState<ShrunkPhoto | null>(null);
-  const [photoBusy, setPhotoBusy] = useState(false);
+  const [queue, setQueue] = useState<QueuedPhoto[]>([]);
+  /** Die Karte ist dran, aber ihr Foto ist noch nicht verkleinert — Speichern wartet. */
+  const [awaiting, setAwaiting] = useState(false);
+  const [leaveAsk, setLeaveAsk] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [valueText, setValueText] = useState("");
   const [nameMissing, setNameMissing] = useState(false);
@@ -76,6 +100,7 @@ export function CardWizardPage() {
   const [savedCount, setSavedCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const shrinking = useRef(false);
 
   const cards = useCards(draft?.collectionId ?? current?.id);
   const allCards = useAllCards();
@@ -87,6 +112,43 @@ export function CardWizardPage() {
     if (draft !== null || current === null) return;
     setDraft(emptyDraft(current.id, ""));
   }, [draft, current]);
+
+  // Im Hintergrund verkleinern: immer das vorderste Foto, das noch nicht fertig ist, eines nach dem anderen.
+  useEffect(() => {
+    const next = queue.find((q) => q.shrunk === null && !q.failed);
+    if (next === undefined || shrinking.current) return;
+    shrinking.current = true;
+    shrinkPhoto(next.file)
+      .then((shrunk) => setQueue((q) => q.map((x) => (x.id === next.id ? { ...x, shrunk } : x))))
+      .catch((error: unknown) => {
+        console.error(error);
+        setQueue((q) => q.map((x) => (x.id === next.id ? { ...x, failed: true } : x)));
+      })
+      .finally(() => {
+        shrinking.current = false;
+      });
+  }, [queue]);
+
+  // Die Karte wartet auf ihr Foto: sobald das vorderste fertig ist, wird es ihres.
+  useEffect(() => {
+    if (!awaiting) return;
+    const head = queue[0];
+    if (head === undefined) {
+      // Alle Fotos davor sind gescheitert — zurück zum Foto-Schirm, ohne stilles Weitermachen.
+      setAwaiting(false);
+      setStep("foto");
+      return;
+    }
+    if (head.failed) {
+      toast(S.wizard.queueFailed);
+      setQueue((q) => q.slice(1));
+      return;
+    }
+    if (head.shrunk === null) return;
+    setQueue((q) => q.slice(1));
+    setPending(head.shrunk);
+    setAwaiting(false);
+  }, [awaiting, queue]);
 
   const duplicates = useMemo(
     () => (draft === null ? [] : findDuplicates(cards ?? [], draft, null)),
@@ -108,20 +170,26 @@ export function CardWizardPage() {
     focus?.current?.focus();
   };
 
-  const onPhotoChange = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
+  const onPhotoChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (file === undefined) return;
-    setPhotoBusy(true);
+    if (files.length === 0) return;
     setPhotoError(null);
-    try {
-      setPending(await shrinkPhoto(file));
+    setQueue((q) => [...q, ...files.map((file) => ({ id: nextQueueId++, file, shrunk: null, failed: false }))]);
+    // Nicht warten, bis verkleinert ist: die Nummer kann er schon tippen, das Foto kommt nach.
+    setAwaiting(true);
+    goTo("nummer");
+  };
+
+  /** Das nächste Foto der Warteschlange wird die nächste Karte — oder, ohne eines, der Foto-Schirm. */
+  const nextCard = (): void => {
+    setPending(null);
+    if (queue.length > 0) {
+      setAwaiting(true);
       goTo("nummer");
-    } catch (error) {
-      console.error(error);
-      setPhotoError(S.card.photoFailed);
-    } finally {
-      setPhotoBusy(false);
+    } else {
+      setAwaiting(false);
+      goTo("foto");
     }
   };
 
@@ -181,14 +249,13 @@ export function CardWizardPage() {
     setDraft(emptyDraft(collectionId, season));
     setValueText("");
     setActive("def");
-    setPending(null);
     setNameMissing(false);
     setShowKept(false);
-    goTo("foto");
+    nextCard();
   };
 
   const save = async (): Promise<void> => {
-    if (saving) return;
+    if (saving || awaiting) return;
     if (draft.name.trim() === "") {
       setNameMissing(true);
       goTo("name", nameRef);
@@ -219,6 +286,29 @@ export function CardWizardPage() {
     afterWrite(draft.collectionId, draft.season);
   };
 
+  /** Das aktuelle Foto weglegen (unscharf, doppelt) und mit dem nächsten weitermachen — die Eingaben bleiben. */
+  const dropPhoto = (): void => {
+    if (awaiting) {
+      // Das Foto, auf das gewartet wird, ist das vorderste der Schlange.
+      setQueue((q) => q.slice(1));
+      if (queue.length <= 1) {
+        setAwaiting(false);
+        goTo("foto");
+      }
+      return;
+    }
+    nextCard();
+  };
+
+  const leave = (): void => {
+    const open = queue.length + (pending !== null || awaiting ? 1 : 0);
+    if (open > 1 && !leaveAsk) {
+      setLeaveAsk(true);
+      return;
+    }
+    navigate(HREF.sammlung);
+  };
+
   const nextValue = (): void => {
     if (active === "def") setActive("att");
     else if (active === "att") setActive("wert");
@@ -244,6 +334,8 @@ export function CardWizardPage() {
     .filter((s): s is string => s !== null)
     .join(" · ");
   const dup = duplicates[0];
+  const hasPhoto = pending !== null || awaiting;
+  const openPhotos = queue.length + (hasPhoto ? 1 : 0);
 
   const duplicateBox = dup === undefined ? null : (
     <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 p-2 text-sm text-amber-100" data-testid="duplicate">
@@ -266,11 +358,13 @@ export function CardWizardPage() {
   };
 
   return (
-    <div className="space-y-3" data-testid="wizard" data-step={step}>
+    <div className="space-y-3" data-testid="wizard" data-step={step} data-queue={queue.length} data-awaiting={awaiting ? "1" : "0"}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          {previewUrl !== undefined && (
+          {previewUrl !== undefined ? (
             <img src={previewUrl} alt="" className="h-12 w-9 shrink-0 rounded object-cover" data-testid="wizard-thumb" />
+          ) : (
+            awaiting && <div className="h-12 w-9 shrink-0 animate-pulse rounded bg-slate-800" aria-hidden="true" />
           )}
           <div className="min-w-0">
             <h1 className="text-lg font-semibold">{S.wizard.title}</h1>
@@ -280,7 +374,7 @@ export function CardWizardPage() {
             </p>
           </div>
         </div>
-        <Btn onClick={() => navigate(HREF.sammlung)}>{S.wizard.leave}</Btn>
+        <Btn onClick={leave}>{S.wizard.leave}</Btn>
       </div>
 
       {/* Der Fortschritt als fünf Striche — ein Blick sagt, wo man steht. */}
@@ -290,15 +384,42 @@ export function CardWizardPage() {
         ))}
       </div>
 
+      {leaveAsk && openPhotos > 1 && (
+        <div className="rounded-lg border border-amber-700/60 bg-amber-950/40 p-3 text-sm text-amber-100" data-testid="leave-ask">
+          <p>{S.wizard.leaveAsk(openPhotos)}</p>
+          <div className="mt-2 flex gap-2">
+            <Btn tone="primary" onClick={() => setLeaveAsk(false)}>
+              {S.wizard.leaveStay}
+            </Btn>
+            <Btn onClick={() => navigate(HREF.sammlung)}>{S.wizard.leaveAnyway}</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Was noch wartet: die nächsten Fotos klein, der Rest als Zahl. */}
+      {queue.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-slate-400" data-testid="queue">
+          <div className="flex gap-1">
+            {queue.slice(0, STRIP_MAX).map((q) => (
+              <QueueThumb key={q.id} photo={q.shrunk} />
+            ))}
+          </div>
+          {queue.length > STRIP_MAX && <span className="tabular-nums">{S.wizard.queueMore(queue.length - STRIP_MAX)}</span>}
+          <span className="tabular-nums" data-testid="queue-count">
+            {S.wizard.queueWaiting(queue.length)}
+          </span>
+        </div>
+      )}
+
       {step === "foto" && (
         <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void onPhotoChange(e)} />
-          <Btn tone="primary" className="min-h-14 w-full text-base" onClick={() => fileRef.current?.click()} disabled={photoBusy}>
-            {photoBusy ? S.card.photoBusy : S.card.photoAdd}
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onPhotoChange} />
+          <Btn tone="primary" className="min-h-14 w-full text-base" onClick={() => fileRef.current?.click()}>
+            {S.card.photoAdd}
           </Btn>
           <p className="text-center text-xs text-slate-500">{S.card.photoAddHint}</p>
           {photoError !== null && <p className="text-center text-sm text-rose-300">{photoError}</p>}
-          <Btn tone="ghost" className="w-full" onClick={() => goTo("nummer")} disabled={photoBusy}>
+          <Btn tone="ghost" className="w-full" onClick={() => goTo("nummer")}>
             {S.wizard.photoSkip}
           </Btn>
         </section>
@@ -323,6 +444,11 @@ export function CardWizardPage() {
               {dup !== undefined ? S.wizard.numberAnyway : draft.number === "" ? S.wizard.numberSkip : S.wizard.next}
             </Btn>
           </div>
+          {hasPhoto && (
+            <Btn tone="ghost" className="w-full text-xs" onClick={dropPhoto}>
+              {S.wizard.photoDrop}
+            </Btn>
+          )}
         </section>
       )}
 
@@ -418,8 +544,8 @@ export function CardWizardPage() {
           <Keypad onDigit={typeValueDigit} onPoint={typeValuePoint} onDelete={deleteValue} decimal={active === "wert"} />
           <div className="flex gap-2">
             <Btn onClick={() => goTo("position")}>{S.wizard.back}</Btn>
-            <Btn tone="primary" className="flex-1" onClick={nextValue} disabled={saving || photoBusy}>
-              {saving ? S.wizard.saving : active === "wert" ? S.wizard.saveAndNext : S.wizard.next}
+            <Btn tone="primary" className="flex-1" onClick={nextValue} disabled={saving || (active === "wert" && awaiting)}>
+              {saving ? S.wizard.saving : active !== "wert" ? S.wizard.next : awaiting ? S.wizard.queueBusy : S.wizard.saveAndNext}
             </Btn>
           </div>
         </section>
@@ -513,5 +639,15 @@ export function CardWizardPage() {
         )}
       </section>
     </div>
+  );
+}
+
+/** Ein wartendes Foto, klein — oder ein leerer Kasten, solange es noch verkleinert wird. */
+function QueueThumb({ photo }: { photo: ShrunkPhoto | null }) {
+  const url = useObjectUrl(photo?.thumb);
+  return url === undefined ? (
+    <div className="h-8 w-6 animate-pulse rounded bg-slate-800" aria-hidden="true" />
+  ) : (
+    <img src={url} alt="" className="h-8 w-6 rounded object-cover" data-testid="queue-thumb" />
   );
 }

@@ -263,8 +263,44 @@ Ordnung, bei tausenden wäre das die Stelle, an der man zuerst nachsieht.
   nichts bewiesen. Jetzt 1260 × 1760, gemessen über die Sicherung: 644 × 900, das
   kleine Bild 240, die Datei unter 150 KB.
 
+## Sammelupload: eine Warteschlange, kein zweiter Weg
+
+Sein Wunsch: „Sammelupload wäre geil. Ich kann in einem Rutsch mehrere Spieler-Bilder
+hochladen und dann nacheinander abarbeiten." Gebaut im selben Assistenten, nicht als
+eigene Seite: das Foto-Feld nimmt mehrere Dateien (`multiple`), sie stehen in einer
+Warteschlange, und nach jedem Speichern (oder „Anzahl erhöhen") kommt sofort das
+nächste Foto an die Reihe — der Foto-Schirm kommt erst wieder, wenn die Schlange leer
+ist. Ein einzelnes Foto geht denselben Weg; es gibt nur EINEN.
+
+Vier Entscheidungen sind eine Notiz wert:
+
+- **Verkleinert wird im Hintergrund, eines nach dem anderen, während er tippt.** Fünfzig
+  iPhone-Fotos am Stück brauchen eine Viertelminute; alle vorab zu rechnen hieße, vor der
+  ersten Karte zu warten. Die Nummer kann er schon tippen, bevor das Foto fertig ist —
+  nur das SPEICHERN wartet (`awaiting`, der Knopf sagt „Foto wird verkleinert …"),
+  weil eine Karte sonst ohne ihr Foto geschrieben würde. Das ist die Stelle, an der die
+  Reihenfolge stimmen muss: das vorderste Foto der Schlange wird die aktuelle Karte,
+  und die Strecke prüft das an der FARBE des Bildes auf der Kachel, nicht an der Zahl.
+- **Ein Foto lässt sich überspringen** (unscharf, doppelt fotografiert), die Eingaben
+  bleiben stehen. Ein gescheitertes Foto wird übersprungen und gesagt, nie still.
+- **Beenden mit voller Schlange fragt erst** — inline, kein Browser-Dialog, mit der
+  Zahl und dem Satz, dass die Fotos nur aus der Schlange fallen, nicht aus der
+  Mediathek. Bei einem einzelnen Foto fragt nichts; das war vorher auch so.
+- **Die Schlange lebt nur im Speicher der Seite.** Ein Wechsel über die Hauptnavigation
+  verwirft sie ohne Frage — die Fotos sind in seiner Mediathek, verloren ist nichts
+  außer der Auswahl. Sie in die Datenbank zu legen wäre ein zweiter Zustand mit
+  eigenen Fehlern (halb verkleinert, Gerät gewechselt) für einen Fall, der ein
+  Neu-Auswählen kostet.
+
+Was im Kopf steht: das aktuelle Foto klein, darunter bis zu fünf wartende als Bilder
+und der Rest als Zahl („+7 · 12 Fotos warten"). Ein leerer, pulsierender Kasten ist ein
+Foto, das noch gerechnet wird.
+
 ## Noch offen
 
+- **Am Gerät ungeprüft: bietet der Foto-Knopf mit `multiple` weiter die Kamera an?** iOS
+  zeigt bei mehreren erlaubten Dateien „Fotomediathek" mit Mehrfachauswahl; ob „Foto
+  aufnehmen" daneben bleibt, sieht nur das Gerät. Wenn nicht, braucht es zwei Knöpfe.
 - **Am Gerät ungeprüft: öffnet sich die Tastatur, wenn die dritte Ziffer zum Namen
   springt?** Der Sprung passiert im Tipp auf eine Taste des Zifferblocks, also in einer
   Berührung — das ist der Weg, der beim Foto-Knopf funktioniert. Kein Safari hier.
