@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* Dunkel, wie Chardex35 — er kennt es so, und Kartenfotos wirken auf Dunkel am besten. */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+}
+
+/* Tap-Ziele: kein Doppeltipp-Zoom auf dem iPhone. */
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* Die Pfeilchen an Zahlenfeldern sind am Handy nur im Weg. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
