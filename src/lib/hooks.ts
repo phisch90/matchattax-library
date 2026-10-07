@@ -102,15 +102,3 @@ export function useObjectUrl(blob: Blob | undefined): string | undefined {
   }, [blob]);
   return url;
 }
-
-/**
- * Die Vorschläge im Formular (Vereine, Kartenarten, Saisons) — über den INDEX
- * gelesen, damit dafür kein einziges Foto aus der Datenbank kommt.
- */
-export function useUniqueIndex(index: "club" | "kind" | "season"): string[] {
-  return useLiveQuery(
-    async () => (await db.cards.orderBy(index).uniqueKeys()).map(String).filter((s) => s !== ""),
-    [index],
-    [] as string[],
-  );
-}

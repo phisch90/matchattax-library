@@ -134,8 +134,20 @@ nachstellen (kein WebKit hinter dem Proxy), also zwei Antworten auf einmal:
   `try/catch`: ein Fehler in einer Bequemlichkeit, der im Effekt hochkommt, hätte die
   App genauso abgeräumt.
 
-Was davon seinen Bildschirm schwarz gemacht hat, weiß ich nicht sicher — der nächste
-Befund von ihm kommt mit Fehlertext oder gar nicht mehr.
+Der Auffangrahmen hat es beim nächsten Versuch gezeigt, als Bildschirmfoto:
+**„UnknownError: Unable to open cursor"** — ein Fehler aus der Datenbank des iPhones.
+Das Formular las die Vorschläge für Verein, Kartenart und Saison per
+`Collection.uniqueKeys()` am Index, und genau diesen Zugriff kann Safari nicht;
+Chromium schon, deshalb war die Strecke grün. Die Startseite liest anders
+(`where().equals().toArray()`) und lief darum.
+
+Behoben, indem die Vorschläge aus den Karten kommen, die das Formular für den
+Doppelt-Hinweis ohnehin lädt; `uniqueKeys()` ist aus dem Quelltext verschwunden. Regel
+ab jetzt: **in Safari nur die Datenbankzugriffe, die die Startseite auch benutzt** —
+`get`, `where().equals().toArray()`, `toArray()`, `put`, `delete`, Transaktionen. Kein
+Schlüssel-Cursor am Index, kein `uniqueKeys`, kein `eachUniqueKey`. Und: ein Fehler,
+der nur auf dem echten Gerät auftritt, braucht einen lesbaren Satz auf dem Gerät —
+ohne den Rahmen wäre das noch immer „schwarzer Bildschirm".
 
 ## Noch offen
 
