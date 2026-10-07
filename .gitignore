@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dev-dist/
+coverage/
+.DS_Store
+*.local
+*.log
+
+# Teststrecken: Bilder und Zwischenstaende
+e2e/.out/
