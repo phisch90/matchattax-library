@@ -5,7 +5,7 @@ import { normalizeSeason, seasonChoices } from "../core/seasons.js";
 import { parseValueTenths, valueInputText } from "../core/value.js";
 import { db, type CardRow, type PhotoRow } from "../db/db.js";
 import { CardRepo, hydrateCard, hydrateTeam } from "../db/repo.js";
-import { useCards, useCollections, useObjectUrl } from "../lib/hooks.js";
+import { useAppSettings, useCards, useCollections, useObjectUrl } from "../lib/hooks.js";
 import { shrinkPhoto } from "../lib/image.js";
 import { goBack } from "../lib/router.js";
 import { HREF } from "../lib/routes.js";
@@ -35,6 +35,7 @@ function rowToInput(row: CardRow): CardInput {
 
 export function CardFormPage({ id: cardId }: { id: string }) {
   const collectionsState = useCollections();
+  const settings = useAppSettings();
 
   // `null` heißt „gibt es nicht", `undefined` heißt „lädt noch" — ohne diese Trennung
   // zeigte die Seite bei einer gelöschten Karte ewig „Lädt …".
@@ -98,7 +99,7 @@ export function CardFormPage({ id: cardId }: { id: string }) {
     setPhotoBusy(true);
     setPhotoError(null);
     try {
-      const shrunk = await shrinkPhoto(file);
+      const shrunk = await shrinkPhoto(file, { crop: settings.autoCrop });
       await guardWrite(() => CardRepo.setPhoto(cardId, shrunk), S.card.photoSubject);
     } catch (error) {
       console.error(error);

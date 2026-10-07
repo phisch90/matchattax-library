@@ -129,24 +129,32 @@ export async function bild(page, name) {
 }
 
 /**
- * Ein Kartenbild, in der Seite gezeichnet — fuer das Foto-Feld. GROESSER als die
- * Grenze der App (1260 x 1760 gegen 900 px), damit das Verkleinern wirklich
- * laeuft; ein Bild unter der Grenze wuerde unveraendert durchgehen und die Pruefung
- * der Fotogroesse bewiese nichts.
+ * Ein Foto wie seines: ein TISCH (braun, leicht gestreift wie Holz) und darauf eine
+ * KARTE in der gegebenen Farbe, mit dunklem Feld und Aufdruck. Der Rahmen ist
+ * 1400 x 1760 (also NICHT im Kartenformat), die Karte 756 x 1056 — groesser als die
+ * Grenze der App (900 px), damit das Verkleinern wirklich laeuft, und mit Rand, damit
+ * das Zuschneiden etwas zu tun hat: gespeichert muss das Kartenformat herauskommen.
  */
 export async function probeFoto(page, farbe = "#f59e0b") {
   const dataUrl = await page.evaluate((f) => {
     const c = document.createElement("canvas");
-    c.width = 1260;
+    c.width = 1400;
     c.height = 1760;
     const x = c.getContext("2d");
-    x.fillStyle = f;
+    x.fillStyle = "#5b3f22";
     x.fillRect(0, 0, c.width, c.height);
+    // Maserung: Streifen, die sich um ein paar Stufen unterscheiden
+    for (let y = 0; y < c.height; y += 40) {
+      x.fillStyle = y % 80 === 0 ? "#634626" : "#55391f";
+      x.fillRect(0, y, c.width, 20);
+    }
+    x.fillStyle = f;
+    x.fillRect(322, 352, 756, 1056);
     x.fillStyle = "#0f172a";
-    x.fillRect(120, 160, 1020, 840);
+    x.fillRect(435, 458, 530, 500);
     x.fillStyle = "#f8fafc";
-    x.font = "bold 180px sans-serif";
-    x.fillText("DEF 85", 160, 1400);
+    x.font = "bold 120px sans-serif";
+    x.fillText("DEF 85", 420, 1250);
     return c.toDataURL("image/png");
   }, farbe);
   return { name: "karte.png", mimeType: "image/png", buffer: Buffer.from(dataUrl.split(",")[1], "base64") };

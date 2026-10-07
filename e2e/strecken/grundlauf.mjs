@@ -443,9 +443,11 @@ const lies = (page, id) => page.locator(`[data-testid="${id}"]`).innerText();
   check("Sicherung traegt das Foto als Daten", mitFoto !== undefined && mitFoto.photo.startsWith("data:image/jpeg"));
   check("Sicherung traegt die Nummer", sicherung.cards.every((c) => typeof c.number === "string") && mitFoto.number === "001");
   check("Sicherung traegt die Aufstellung", sicherung.teams[0].formation === "4-3-3" && sicherung.teams[0].slots.length === 11);
-  // Fotogroesse: die Probe ist 1260 x 1760, gespeichert wird hoechstens 900 px
+  // Fotogroesse: die Probe ist 1400 x 1760 mit einer Karte darin — gespeichert wird die
+  // KARTE (Format 0,72, nicht der Rahmen mit 0,80) auf hoechstens 900 px
   const fotoMasse = await bildMasse(page, mitFoto.photo);
   check("Foto ist auf 900 px verkleinert", Math.max(...fotoMasse) === 900 && Math.min(...fotoMasse) > 0, fotoMasse.join("x"));
+  check("Foto ist auf die Karte zugeschnitten (Kartenformat, nicht Rahmenformat)", fotoMasse[0] / fotoMasse[1] < 0.76 && fotoMasse[0] / fotoMasse[1] > 0.68, fotoMasse.join("x"));
   const kleinMasse = typeof mitFoto.thumb === "string" ? await bildMasse(page, mitFoto.thumb) : [0, 0];
   check("kleines Bild hoechstens 240 px", Math.max(...kleinMasse) === 240, kleinMasse.join("x"));
   check("Foto bleibt unter 150 KB", mitFoto.photo.length * 0.75 < 150_000, `${Math.round((mitFoto.photo.length * 0.75) / 1024)} KB`);

@@ -113,6 +113,12 @@ export const appSettingsSchema = z.object({
   currentCollectionId: z.string().default(""),
   /** Wann zuletzt gesichert wurde (ISO, "" = nie). */
   lastExportAt: z.string().default(""),
+  /**
+   * Neue Fotos auf die Karte zuschneiden („weniger Hintergrund-Rand"). Standard AN,
+   * auch für ein fehlendes Feld; der Schalter in den Einstellungen ist der Ausweg,
+   * falls die Erkennung auf seinem Tisch danebengreift.
+   */
+  autoCrop: z.boolean().default(true).catch(true),
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 export const DEFAULT_APP_SETTINGS: AppSettings = appSettingsSchema.parse({});

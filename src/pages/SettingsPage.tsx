@@ -1,8 +1,8 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import type { Collection } from "../core/model.js";
-import { CollectionRepo } from "../db/repo.js";
+import { CollectionRepo, SettingsRepo } from "../db/repo.js";
 import { applyBackup, exportAndRemember, parseBackup, type Backup } from "../lib/backup.js";
-import { useAppSettings, useCollections } from "../lib/hooks.js";
+import { useAppSettings, useCollections, useMirror } from "../lib/hooks.js";
 import { guardWrite } from "../lib/saveError.js";
 import { toast } from "../lib/toast.js";
 import { useUpdateStore } from "../lib/updateStore.js";
@@ -13,6 +13,7 @@ import { Box, Btn, Field, INPUT, Sheet } from "../ui/bits.js";
 export function SettingsPage() {
   const state = useCollections();
   const settings = useAppSettings();
+  const [autoCrop, setAutoCrop] = useMirror(settings.autoCrop);
   const [withPhotos, setWithPhotos] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [pendingImport, setPendingImport] = useState<Backup | null>(null);
@@ -98,6 +99,25 @@ export function SettingsPage() {
         >
           {S.settings.collectionAdd}
         </Btn>
+      </Box>
+
+      <Box title={S.settings.photos}>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={autoCrop}
+            onChange={(e) => {
+              setAutoCrop(e.target.checked);
+              void guardWrite(() => SettingsRepo.patch({ autoCrop: e.target.checked }), "Das Zuschneiden");
+            }}
+            className="mt-0.5 h-5 w-5 accent-emerald-500"
+            data-testid="auto-crop"
+          />
+          <span>
+            {S.settings.autoCrop}
+            <span className="block text-xs text-slate-500">{S.settings.autoCropHint}</span>
+          </span>
+        </label>
       </Box>
 
       <Box title={S.settings.backup}>
