@@ -55,8 +55,8 @@ export const S = {
     newTitle: "Neue Karte",
     editTitle: "Karte",
     photo: "Foto",
-    photoTake: "Foto aufnehmen",
-    photoPick: "Aus den Fotos",
+    photoAdd: "Foto aufnehmen oder wählen",
+    photoAddHint: "Das Gerät fragt dann: Kamera oder Fotomediathek.",
     photoRemove: "Foto entfernen",
     photoNone: "Noch kein Foto",
     photoFailed: "Das Foto konnte nicht gelesen werden.",
@@ -178,6 +178,12 @@ export const S = {
     busy: "Lädt …",
     dismiss: "Später",
     hint: "Wartet schon eine neue Fassung, wird sie übernommen. Sonst wird beim Server nachgefragt; hilft auch das nicht, wird der Zwischenspeicher geleert und neu geladen — danach ist die App erst wieder offline nutzbar, wenn sie einmal mit Netz geöffnet wurde.",
+  },
+
+  crash: {
+    title: "Hier ist die App abgestürzt.",
+    text: "Das ist ein Fehler in der App, nicht in deiner Bedienung. Der Text darunter hilft beim Suchen — am besten abfotografieren oder vorlesen.",
+    reload: "Neu laden",
   },
 
   saveError: {

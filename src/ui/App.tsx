@@ -10,6 +10,7 @@ import { TeamPage } from "../pages/TeamPage.js";
 import { TeamsPage } from "../pages/TeamsPage.js";
 import { S } from "../strings.js";
 import { Empty } from "./bits.js";
+import { ErrorBoundary } from "./ErrorBoundary.js";
 import { Layout } from "./Layout.js";
 
 export function App() {
@@ -53,5 +54,10 @@ export function App() {
       break;
   }
 
-  return <Layout section={navSection(route)}>{page}</Layout>;
+  // Der Schlüssel ist die Adresse: ein Seitenwechsel setzt den Auffangrahmen zurück.
+  return (
+    <Layout section={navSection(route)}>
+      <ErrorBoundary key={window.location.hash}>{page}</ErrorBoundary>
+    </Layout>
+  );
 }
