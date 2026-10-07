@@ -33,9 +33,11 @@ class KartenmappeDB extends Dexie {
     super("kartenmappe");
     this.version(1).stores({
       collections: "id",
-      // `club` und `kind` stehen als Index, werden aber NICHT per `uniqueKeys()` gelesen:
+      // `club` und `kind` stehen als Index aus der ersten Fassung; die Felder haben
+      // keine Oberfläche mehr, und einen Index entfernt man nur mit einer neuen
+      // Datenbank-Version — für nichts. Gelesen wird KEIN Index per `uniqueKeys()`:
       // Safari wirft dabei „UnknownError: Unable to open cursor" (sein iPhone, erster
-      // Tag). Die Vorschläge im Formular kommen aus den geladenen Karten der Sammlung.
+      // Tag). Vorschläge kommen aus den geladenen Karten (`toArray`).
       cards: "id, collectionId, season, club, kind, [collectionId+season]",
       photos: "cardId",
       teams: "id, collectionId",

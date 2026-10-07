@@ -128,21 +128,40 @@ export async function bild(page, name) {
   await page.screenshot({ path: join(ziel, `${name}.png`) });
 }
 
-/** Ein kleines Kartenbild, in der Seite gezeichnet — fuer das Foto-Feld. */
+/**
+ * Ein Kartenbild, in der Seite gezeichnet — fuer das Foto-Feld. GROESSER als die
+ * Grenze der App (1260 x 1760 gegen 900 px), damit das Verkleinern wirklich
+ * laeuft; ein Bild unter der Grenze wuerde unveraendert durchgehen und die Pruefung
+ * der Fotogroesse bewiese nichts.
+ */
 export async function probeFoto(page, farbe = "#f59e0b") {
   const dataUrl = await page.evaluate((f) => {
     const c = document.createElement("canvas");
-    c.width = 630;
-    c.height = 880;
+    c.width = 1260;
+    c.height = 1760;
     const x = c.getContext("2d");
     x.fillStyle = f;
     x.fillRect(0, 0, c.width, c.height);
     x.fillStyle = "#0f172a";
-    x.fillRect(60, 80, 510, 420);
+    x.fillRect(120, 160, 1020, 840);
     x.fillStyle = "#f8fafc";
-    x.font = "bold 90px sans-serif";
-    x.fillText("ATT 85", 80, 700);
+    x.font = "bold 180px sans-serif";
+    x.fillText("DEF 85", 160, 1400);
     return c.toDataURL("image/png");
   }, farbe);
   return { name: "karte.png", mimeType: "image/png", buffer: Buffer.from(dataUrl.split(",")[1], "base64") };
+}
+
+/** Breite und Hoehe eines Bildes aus einer Data-URL, im Browser gelesen. */
+export function bildMasse(page, dataUrl) {
+  return page.evaluate(
+    (src) =>
+      new Promise((resolve) => {
+        const i = new Image();
+        i.onload = () => resolve([i.naturalWidth, i.naturalHeight]);
+        i.onerror = () => resolve([0, 0]);
+        i.src = src;
+      }),
+    dataUrl,
+  );
 }

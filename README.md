@@ -9,13 +9,15 @@ auf dem Gerät, kein Server, offline nutzbar.
 Auf dem iPhone oder iPad öffnen und „Zum Home-Bildschirm" hinzufügen. Die Adresse
 steht nach dem ersten Deploy im Lauf „Deploy (GitHub Pages)".
 
-- **Sammlung**: Karten als Kacheln, Filter nach Saison und Position, Suche, Sortierung.
-  „+ Karte" öffnet das Formular: Foto aufnehmen, Name, Verein, Position, ATT, DEF,
-  Wert, Tor-Wert, Kartenart, Anzahl. Im Serienmodus bleibt nach dem Speichern
-  stehen, was für die nächste Karte aus demselben Päckchen gleich bleibt.
+- **Sammlung**: Karten als Kacheln, Filter nach Position (und Saison, wenn es mehrere
+  gibt), Suche nach Name oder Nummer, Sortierung. „+ Karte" fragt Wert für Wert: Foto,
+  Nummer (drei Ziffern springen von selbst weiter), Name (mit Vorschlägen aus beiden
+  Sammlungen), Position, DEF, ATT, Wert — die Zahlen auf einem eigenen Zifferblock.
+  Danach gleich die nächste Karte; Saison und Sammlung bleiben stehen. Eine Nummer,
+  die es schon gibt, erhöht mit einem Tipp die Anzahl.
 - **Teams**: 11 Karten, ein Torwart, Aufstellung aus einer Liste echter Formationen.
-  Summen für ATT, DEF und Wert; optional eine Warnung ab 100.0M Mannschaftswert.
-  Gewarnt wird, gesperrt nie.
+  Auf jeden Platz darf nur die passende Position. Summen für DEF, ATT und Wert;
+  optional eine Warnung ab 100.0M Mannschaftswert.
 - **Einstellungen**: Sammlungen umbenennen, Sicherung speichern und einlesen, Stand
   der App.
 
