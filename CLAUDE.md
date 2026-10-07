@@ -149,7 +149,46 @@ Schlüssel-Cursor am Index, kein `uniqueKeys`, kein `eachUniqueKey`. Und: ein Fe
 der nur auf dem echten Gerät auftritt, braucht einen lesbaren Satz auf dem Gerät —
 ohne den Rahmen wäre das noch immer „schwarzer Bildschirm".
 
+## „Ich dachte nicht, dass ich die Werte selber eintragen muss"
+
+Sein zweiter Befund am Gerät, und der trifft mich: ich hatte es am Anfang in einem
+Nebensatz gesagt (die App kann das Foto nicht lesen) — zu leise für die Sache, die
+den ganzen Ablauf bestimmt. Gefragt und entschieden: **kein Geld ausgeben** (also
+keine Erkennung über einen Dienst mit Schlüssel, obwohl die für etwa einen Cent je
+Karte das Beste wäre), **„lieber Wert für Wert abfragen. Mit so wenigen Klicks wie
+möglich."** Nicht neu fragen, ob man die Erkennung „doch mal" einbauen soll — er hat
+die Kosten gesehen und nein gesagt.
+
+Gebaut als `pages/CardWizardPage.tsx`, fünf Schirme: **Foto → Name → Verein →
+Position → Werte (ATT, DEF, Wert)**, danach sofort das Foto der nächsten Karte. Das
+volle Formular (`CardFormPage`) bleibt dem Bearbeiten.
+
+Fünf Entscheidungen sind eine Notiz wert:
+
+- **Was sich selten ändert, bleibt stehen** (Saison, Kartenart, Tor-Wert, Anzahl,
+  Sammlung) und steht als eine Zeile „Bleibt stehen: …" mit „ändern" unter dem
+  Schritt. Was sich fast immer ändert, wird abgefragt. **Der Verein wird abgefragt,
+  nicht behalten**: ein Päckchen ist gemischt, ein vorbelegter Verein wäre meistens
+  der falsche — stattdessen die zuletzt benutzten als Knöpfe (ein Tipp springt
+  weiter). Nach ein paar Karten sind damit alle Vereine der Liga einen Tipp entfernt.
+- **Enter ist Weiter.** Die Tastatur geht zwischen Name, Verein, ATT, DEF und Wert
+  nicht zu; `enterKeyHint` sagt der iPhone-Tastatur, was die Taste tut, und Enter im
+  Wert speichert. Ein Tipp auf Vereins-Knopf oder Position springt von selbst.
+- **`flushSync` beim Schirmwechsel ist Pflicht, kein Zierrat.** Das nächste Feld muss
+  NOCH IM TIPP fokussiert werden — erst rendern, dann `focus()`, beides in derselben
+  Berührung —, sonst öffnet iOS die Tastatur nicht, und er tippt einmal mehr.
+- **Die Saison der ersten Karte ist die der zuletzt angelegten**, sonst die laufende
+  (`CURRENT_SEASONS[0]`). Eine leere Saison wäre eine Frage mehr je Sitzung.
+- **Der kostenlose Trick steht als Hinweis am Namensfeld:** die iPhone-Tastatur kann
+  Text scannen. Das ist die einzige Erkennung, die nichts kostet und nichts
+  wegschickt.
+
 ## Noch offen
+
+- **`CardFormPage` trägt noch den Anlege-Zweig** (Serienmodus-Kästchen,
+  Speichern-Leiste), der seit dem Assistenten nicht mehr erreichbar ist. Beim nächsten
+  Anfassen des Formulars auf Bearbeiten eindampfen; `serialMode` in den Einstellungen
+  wird dann frei.
 
 - **Was der Tor-Wert bedeutet.** Er prüft es an seinen Karten; bis dahin ist es ein
   Zahlenfeld ohne Wirkung auf das Team.
